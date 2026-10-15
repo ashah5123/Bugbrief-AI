@@ -1,0 +1,66 @@
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+class ProjectIn(StrictModel):
+    name: str = Field(min_length=1, max_length=100)
+    url: str = Field(default='', max_length=2000)
+
+    @field_validator('name')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('Name cannot be blank')
+        return value.strip()
+
+    @field_validator('url')
+    @classmethod
+    def url_check(cls, value):
+        if value and not value.startswith(('https://', 'http://')):
+            raise ValueError('Use an http:// or https:// URL')
+        return value
+
+class FeedbackIn(StrictModel):
+    project_id: str
+    text: str = Field(min_length=3, max_length=8000)
+    page_url: str = Field(default='', max_length=2000)
+    device: str = Field(default='', max_length=200)
+    browser: str = Field(default='', max_length=200)
+    _url = field_validator('page_url')(ProjectIn.url_check.__func__)
+
+    @field_validator('text')
+    @classmethod
+    def nonblank(cls, value):
+        if len(value.strip()) < 3:
+            raise ValueError('Describe the feedback in at least 3 characters')
+        return value
+
+class Claim(StrictModel):
+    text: str = Field(min_length=1, max_length=2000)
+    evidence_quote: str = Field(min_length=1, max_length=2000)
+    source: Literal['feedback', 'page_url', 'device', 'browser']
+
+class BugReport(StrictModel):
+    title: str = Field(min_length=3, max_length=180)
+    description: str = Field(min_length=1, max_length=4000)
+    expected_behaviour: Claim | None
+    actual_behaviour: Claim | None
+    reproduction_steps: list[Claim] = Field(max_length=15)
+    observations: list[Claim] = Field(max_length=20)
+    hypotheses: list[str] = Field(max_length=10)
+    unknowns: list[str] = Field(max_length=15)
+    questions: list[str] = Field(max_length=5)
+    category: Literal['UI / UX', 'Functionality', 'Performance', 'Content', 'Other']
+    priority: Literal['Low', 'Medium', 'High', 'Critical']
+
+class SaveReport(StrictModel):
+    version: int
+    report: BugReport
+
+class GenerateIn(StrictModel):
+    consent: bool = False
+
+class ApplyProposal(StrictModel):
+    version: int
