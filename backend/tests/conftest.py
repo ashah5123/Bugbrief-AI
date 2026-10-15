@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from app.db import Base, get_db, make_engine
 from app.main import app
 from app.config import settings
-from app.providers.gemini import GeminiGenerator
+from app.providers.gemini import GeminiGenerator, GeminiImageAnalyzer
+from app.storage import LocalStorage
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
@@ -23,6 +24,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, 'free_tier_confirmed', True)
     monkeypatch.setattr(settings, 'ai_daily_limit', 20)
     app.state.generator = GeminiGenerator(settings)
+    app.state.image_analyzer = GeminiImageAnalyzer(settings)
+    app.state.storage = LocalStorage(tmp_path / 'attachments')
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

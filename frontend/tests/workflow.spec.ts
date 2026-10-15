@@ -14,6 +14,8 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
     fullPage: true,
   });
   const initialCount = await page.locator(".feedback-row").count();
+  const initialTotal = (await (await page.request.get("/api/feedback")).json())
+    .length;
   await page
     .locator("main")
     .getByRole("button", { name: "Create project", exact: true })
@@ -36,7 +38,9 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
   await expect(page.getByRole("status")).toContainText("Feedback saved");
   await page.reload();
   await expect(page.getByLabel("Client feedback")).toHaveValue(text);
-  await expect(page.locator(".feedback-row")).toHaveCount(initialCount + 1);
+  await expect(page.locator(".feedback-row")).toHaveCount(
+    Math.min(initialCount + 1, 5),
+  );
   await page.getByLabel("I’ve removed sensitive information").check();
   await page
     .getByRole("button", { name: "Generate report", exact: true })
@@ -47,7 +51,12 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
   await page.reload();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Feedback saved");
-  await expect(page.locator(".feedback-row")).toHaveCount(initialCount + 1);
+  await expect(page.locator(".feedback-row")).toHaveCount(
+    Math.min(initialCount + 1, 5),
+  );
+  expect((await (await page.request.get("/api/feedback")).json()).length).toBe(
+    initialTotal + 1,
+  );
   const noOverflow = await page.evaluate(
     () => document.documentElement.scrollWidth <= window.innerWidth,
   );

@@ -54,3 +54,30 @@ def test_timeout(monkeypatch):
     with pytest.raises(ProviderError) as exc:
         asyncio.run(GeminiGenerator(Settings(gemini_api_key='test',free_tier_confirmed=True)).generate({'feedback':'Test'}))
     assert exc.value.code == 'timeout'
+
+def test_vision_http_contract(monkeypatch):
+    import base64
+    from app.providers.gemini import GeminiImageAnalyzer
+    original=httpx.AsyncClient
+    def respond(request):
+        body=json.loads(request.content)
+        parts=body['contents'][0]['parts']
+        assert parts[0]['inlineData']['mimeType']=='image/png'
+        assert base64.b64decode(parts[0]['inlineData']['data'])==b'reviewed-pixels'
+        assert 'UNTRUSTED DATA' in body['systemInstruction']['parts'][0]['text']
+        result={'observations':[{'description':'An error banner is visible.','region':'top'}],'limitations':['A screenshot cannot prove preceding user actions.']}
+        return httpx.Response(200,json={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':json.dumps(result)}]}}]})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(respond),**kwargs))
+    result=asyncio.run(GeminiImageAnalyzer(Settings(gemini_api_key='test',free_tier_confirmed=True)).analyze(b'reviewed-pixels','image/png'))
+    assert result.analysis.observations[0].region=='top'
+
+def test_vision_invalid_output_rejected(monkeypatch):
+    from app.providers.gemini import GeminiImageAnalyzer
+    original=httpx.AsyncClient
+    # Invented interaction fields are outside the allowed observation schema.
+    invalid={'observations':[],'limitations':[],'reproduction_steps':['Click checkout']}
+    payload={'candidates':[{'finishReason':'STOP','content':{'parts':[{'text':json.dumps(invalid)}]}}]}
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(lambda r:httpx.Response(200,json=payload)),**kwargs))
+    with pytest.raises(ProviderError) as exc:
+        asyncio.run(GeminiImageAnalyzer(Settings(gemini_api_key='test',free_tier_confirmed=True)).analyze(b'image','image/png'))
+    assert exc.value.code=='invalid_response'

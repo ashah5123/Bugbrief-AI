@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class StrictModel(BaseModel):
@@ -24,7 +24,7 @@ class ProjectIn(StrictModel):
 
 class FeedbackIn(StrictModel):
     project_id: str
-    text: str = Field(min_length=3, max_length=8000)
+    text: str = Field(default='', max_length=8000)
     page_url: str = Field(default='', max_length=2000)
     device: str = Field(default='', max_length=200)
     browser: str = Field(default='', max_length=200)
@@ -33,14 +33,14 @@ class FeedbackIn(StrictModel):
     @field_validator('text')
     @classmethod
     def nonblank(cls, value):
-        if len(value.strip()) < 3:
+        if value and len(value.strip()) < 3:
             raise ValueError('Describe the feedback in at least 3 characters')
         return value
 
 class Claim(StrictModel):
     text: str = Field(min_length=1, max_length=2000)
     evidence_quote: str = Field(min_length=1, max_length=2000)
-    source: Literal['feedback', 'page_url', 'device', 'browser']
+    source: str = Field(pattern=r'^(feedback|page_url|device|browser|clarification:[a-f0-9-]{36}|screenshot:[a-f0-9-]{36}:[0-9]{1,2})$')
 
 class BugReport(StrictModel):
     title: str = Field(min_length=3, max_length=180)
@@ -64,3 +64,23 @@ class GenerateIn(StrictModel):
 
 class ApplyProposal(StrictModel):
     version: int
+
+
+class VisualObservation(StrictModel):
+    description: str = Field(min_length=3, max_length=800)
+    region: str = Field(min_length=1, max_length=150)
+
+class ImageAnalysis(StrictModel):
+    observations: list[VisualObservation] = Field(max_length=8)
+    limitations: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(min_length=1, max_length=8)
+
+class ClarificationIn(StrictModel):
+    question: str = Field(min_length=3, max_length=500)
+    answer: str = Field(min_length=1, max_length=2000)
+
+    @field_validator('question', 'answer')
+    @classmethod
+    def nonblank(cls, value):
+        if not value.strip():
+            raise ValueError('Question and answer cannot be blank')
+        return value.strip()

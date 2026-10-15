@@ -38,8 +38,35 @@ class AIJob(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'))
     day: Mapped[str] = mapped_column(String, index=True)
+    kind: Mapped[str] = mapped_column(String, default='report', server_default='report')
     outcome: Mapped[str] = mapped_column(String, default='started')
     latency_ms: Mapped[float] = mapped_column(Float, default=0)
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     model: Mapped[str] = mapped_column(String)
+
+class Attachment(Base):
+    __tablename__ = 'attachments'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
+    filename: Mapped[str] = mapped_column(String(150))
+    storage_key: Mapped[str] = mapped_column(String)
+    mime_type: Mapped[str] = mapped_column(String)
+    size: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String)
+    reviewed_at: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+    analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    analyzed_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+class Clarification(Base):
+    __tablename__ = 'clarifications'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
+    question: Mapped[str] = mapped_column(String(500))
+    answer: Mapped[str] = mapped_column(String(2000))
+    created_at: Mapped[str] = mapped_column(String, default=now)

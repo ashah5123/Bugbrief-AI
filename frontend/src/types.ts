@@ -7,7 +7,7 @@ export type Project = {
 export type Claim = {
   text: string;
   evidence_quote: string;
-  source: "feedback" | "page_url" | "device" | "browser";
+  source: string;
 };
 export type Report = {
   title: string;
@@ -22,9 +22,33 @@ export type Report = {
   category: string;
   priority: string;
 };
+export type Attachment = {
+  id: string;
+  feedback_id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  width: number;
+  height: number;
+  reviewed_at: string;
+  analysis: {
+    observations: { description: string; region: string }[];
+    limitations: string[];
+  } | null;
+  analyzed_at: string | null;
+  error: string | null;
+};
+export type Clarification = {
+  id: string;
+  question: string;
+  answer: string;
+  created_at: string;
+};
 export type Feedback = {
   id: string;
   project_id: string;
+  attachments: Attachment[];
+  clarifications: Clarification[];
   text: string;
   page_url: string;
   device: string;
@@ -48,6 +72,7 @@ export type Health = {
     limit: number;
     paused: boolean;
     successful: number;
+    vision_successful: number;
     input_tokens: number;
     output_tokens: number;
     average_latency_ms: number;

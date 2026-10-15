@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / 'backend' / '.env', extra='ignore')
     database_url: str = f"sqlite:///{ROOT / 'data' / 'bugbrief.db'}"
+    attachments_dir: Path = ROOT / 'data' / 'attachments'
     gemini_api_key: str = ''
     free_tier_confirmed: bool = False
     gemini_model: str = 'gemini-3.5-flash-lite'

@@ -1,6 +1,6 @@
 from typing import Protocol
 from dataclasses import dataclass
-from ..schemas import BugReport
+from ..schemas import BugReport, ImageAnalysis
 
 @dataclass
 class Generation:
@@ -16,9 +16,15 @@ class ProviderError(Exception):
 class ReportGenerator(Protocol):
     async def generate(self, evidence: dict[str, str]) -> Generation: ...
 
-# Independent extension seams. Not implemented or exposed in Phase 1.
+@dataclass
+class VisionGeneration:
+    analysis: ImageAnalysis
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+# Independent hosted vision integration.
 class ImageAnalyzer(Protocol):
-    async def analyze(self, content: bytes, mime_type: str) -> dict: ...
+    async def analyze(self, content: bytes, mime_type: str) -> VisionGeneration: ...
 
 class Transcriber(Protocol):
     async def transcribe(self, content: bytes, mime_type: str) -> str: ...

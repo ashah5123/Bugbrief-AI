@@ -35,6 +35,7 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
+import EvidencePanel from "./EvidencePanel";
 import {
   api,
   type Feedback,
@@ -171,7 +172,9 @@ export default function App() {
   const [mobileNav, setMobileNav] = useState(false);
   const [selected, setSelected] = useState<Feedback | null>(null);
   const [editReport, setEditReport] = useState<Report | null>(null);
-  const [editorTab, setEditorTab] = useState<"report" | "source">("report");
+  const [editorTab, setEditorTab] = useState<"report" | "source" | "evidence">(
+    "report",
+  );
   const composer = useRef<HTMLTextAreaElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -260,7 +263,52 @@ export default function App() {
         JSON.stringify({ version: selected.version, report: editReport }),
       );
   }, [editReport, selected]);
+  const activeFeedback = items.find((item) => item.id === activeId) || null;
+  const hasSavedEvidence = !!(
+    activeFeedback?.attachments.length || activeFeedback?.clarifications.length
+  );
+  const imagesNeedAnalysis = !!activeFeedback?.attachments.some(
+    (image) => !image.analysis,
+  );
+  const evidenceLabels: Record<string, string> = {
+    feedback: "Original feedback",
+    page_url: "Page URL",
+    device: "Device",
+    browser: "Browser",
+  };
+  selected?.clarifications.forEach((entry, index) => {
+    evidenceLabels[`clarification:${entry.id}`] =
+      `Clarification answer ${index + 1}`;
+  });
+  selected?.attachments.forEach((image, index) =>
+    image.analysis?.observations.forEach((observation, observationIndex) => {
+      evidenceLabels[`screenshot:${image.id}:${observationIndex}`] =
+        `Screenshot ${index + 1}, observation ${observationIndex + 1} · unverified`;
+    }),
+  );
   const reports = items.filter((i) => i.report);
+  function evidenceUpdated(updated: Feedback) {
+    setItems((current) =>
+      current.some((item) => item.id === updated.id)
+        ? current.map((item) => (item.id === updated.id ? updated : item))
+        : [updated, ...current],
+    );
+    if (selected?.id === updated.id) setSelected(updated);
+    api<Health>("/health")
+      .then(setHealth)
+      .catch(() => {});
+  }
+  async function preserveSelectedReport(): Promise<Feedback> {
+    if (!selected) throw new Error("Open a report first.");
+    if (!editReport) return selected;
+    const saved = await api<Feedback>(
+      `/feedback/${selected.id}/report`,
+      "PUT",
+      { version: selected.version, report: editReport },
+    );
+    setSelected(saved);
+    return saved;
+  }
   const ready =
     health?.ai_configured &&
     health.free_tier_confirmed &&
@@ -694,7 +742,8 @@ export default function App() {
                   </div>
                   <div className="feedback-label-row">
                     <label htmlFor="feedback-text">
-                      Client feedback <span className="required">*</span>
+                      Client feedback{" "}
+                      <span className="optional">or add a screenshot</span>
                     </label>
                     <span>English, हिंदी, or a little of both</span>
                   </div>
@@ -772,6 +821,13 @@ export default function App() {
                       </div>
                     </div>
                   )}
+                  <EvidencePanel
+                    feedback={activeFeedback}
+                    ensureFeedback={saveDraft}
+                    onChange={evidenceUpdated}
+                    busy={busy}
+                    onBusy={setBusy}
+                  />
                   <label className="consent">
                     <input
                       type="checkbox"
@@ -780,7 +836,7 @@ export default function App() {
                     />
                     <span>
                       I’ve removed sensitive information and agree to send this
-                      feedback to Gemini.{" "}
+                      feedback and saved evidence to Gemini.{" "}
                       <button
                         className="inline-link"
                         onClick={(e) => {
@@ -801,7 +857,10 @@ export default function App() {
                   <div>
                     <button
                       className="secondary-button"
-                      disabled={busy || draft.text.trim().length < 3}
+                      disabled={
+                        busy ||
+                        (draft.text.trim().length < 3 && !hasSavedEvidence)
+                      }
                       onClick={() => submit(false)}
                     >
                       Save draft
@@ -809,7 +868,10 @@ export default function App() {
                     <button
                       className="primary-button generate-button"
                       disabled={
-                        busy || !consent || draft.text.trim().length < 3
+                        busy ||
+                        !consent ||
+                        imagesNeedAnalysis ||
+                        (draft.text.trim().length < 3 && !hasSavedEvidence)
                       }
                       onClick={() => submit(true)}
                     >
@@ -1026,7 +1088,10 @@ export default function App() {
                           </span>
                           <span>
                             <strong>
-                              {item.report?.title || item.text.slice(0, 90)}
+                              {item.report?.title ||
+                                item.text.slice(0, 90) ||
+                                item.attachments[0]?.filename ||
+                                "Untitled feedback"}
                             </strong>
                             <small>
                               {item.report
@@ -1165,7 +1230,7 @@ export default function App() {
                   ? "AI processing paused"
                   : "Connect your free API key"}
             </strong>
-            <span className="subtle-tag">PHASE 1</span>
+            <span className="subtle-tag">PHASE 2</span>
           </div>
           <ol className="setup-list">
             <li>
@@ -1217,6 +1282,10 @@ export default function App() {
             <div>
               <span>Reports generated</span>
               <strong>{health?.usage.successful || 0}</strong>
+            </div>
+            <div>
+              <span>Screenshots analyzed</span>
+              <strong>{health?.usage.vision_successful || 0}</strong>
             </div>
             <div>
               <span>Input / output tokens</span>
@@ -1281,8 +1350,9 @@ export default function App() {
           <div className="privacy-note">
             <Lightbulb size={20} />
             <p>
-              Phase 1 is text-only. Screenshots and clarification come next.
-              Drafts work even when AI is unavailable.
+              Add a reviewed screenshot, analyze it with your consent, and
+              answer clarification questions before revising your report.
+              Drafts, screenshots and answers save without provider access.
             </p>
           </div>
           <button
@@ -1320,6 +1390,7 @@ export default function App() {
               <button
                 className="icon-button"
                 aria-label="Close report"
+                disabled={busy}
                 onClick={() => setSelected(null)}
               >
                 <X size={21} />
@@ -1345,6 +1416,13 @@ export default function App() {
                 onClick={() => setEditorTab("source")}
               >
                 <MessageSquare size={15} /> Original feedback
+              </button>
+              <button
+                className={editorTab === "evidence" ? "active" : ""}
+                onClick={() => setEditorTab("evidence")}
+              >
+                <ShieldCheck size={15} />
+                Evidence & answers
               </button>
             </div>
             <div className="drawer-body">
@@ -1391,7 +1469,10 @@ export default function App() {
               {editorTab === "source" ? (
                 <>
                   <span className="eyebrow">ORIGINAL CLIENT FEEDBACK</span>
-                  <blockquote>{selected.text}</blockquote>
+                  <blockquote>
+                    {selected.text ||
+                      "No written feedback supplied. See the reviewed screenshots."}
+                  </blockquote>
                   <div className="source-details">
                     <p>
                       <strong>Project</strong>
@@ -1413,6 +1494,53 @@ export default function App() {
                       <strong>Submitted</strong>
                       {new Date(selected.created_at).toLocaleString()}
                     </p>
+                  </div>
+                </>
+              ) : editorTab === "evidence" ? (
+                <>
+                  <EvidencePanel
+                    feedback={selected}
+                    ensureFeedback={preserveSelectedReport}
+                    onChange={evidenceUpdated}
+                    busy={busy}
+                    onBusy={setBusy}
+                    questions={
+                      selected.proposal?.questions || editReport?.questions
+                    }
+                  />
+                  <div className="revise-panel">
+                    <h3>Bring the new details into your brief.</h3>
+                    <p>
+                      Your current report and manual edits stay preserved.
+                      Review the new proposal before applying it.
+                    </p>
+                    <label className="consent">
+                      <input
+                        type="checkbox"
+                        checked={consent}
+                        onChange={(event) => setConsent(event.target.checked)}
+                      />
+                      <span>
+                        I agree to send saved feedback, clarification answers
+                        and screenshot observations to Gemini.
+                      </span>
+                    </label>
+                    <button
+                      className="primary-button"
+                      disabled={
+                        busy ||
+                        !consent ||
+                        selected.attachments.some((image) => !image.analysis)
+                      }
+                      onClick={regenerate}
+                    >
+                      {busy ? (
+                        <LoaderCircle size={15} className="spin" />
+                      ) : (
+                        <Sparkles size={15} />
+                      )}
+                      Generate revised proposal
+                    </button>
                   </div>
                 </>
               ) : (
@@ -1486,6 +1614,7 @@ export default function App() {
                       />
                     </label>
                     <ClaimEditor
+                      sources={evidenceLabels}
                       label="Expected behaviour"
                       claim={editReport.expected_behaviour}
                       onChange={(c) =>
@@ -1493,6 +1622,7 @@ export default function App() {
                       }
                     />
                     <ClaimEditor
+                      sources={evidenceLabels}
                       label="Actual behaviour"
                       claim={editReport.actual_behaviour}
                       onChange={(c) =>
@@ -1514,6 +1644,7 @@ export default function App() {
                           )}
                           {editReport[field].map((c, i) => (
                             <ClaimEditor
+                              sources={evidenceLabels}
                               key={i}
                               label={`${i + 1}`}
                               claim={c}
@@ -1556,7 +1687,7 @@ export default function App() {
                           {field === "unknowns"
                             ? "Unknown details"
                             : field === "questions"
-                              ? "Suggested clarification questions · answers in Phase 2"
+                              ? "Suggested clarification questions · answer in Evidence & answers"
                               : "Hypotheses · unverified"}
                           <textarea
                             rows={3}
@@ -1739,10 +1870,12 @@ function ProjectForm({
   );
 }
 function ClaimEditor({
+  sources,
   label,
   claim,
   onChange,
 }: {
+  sources: Record<string, string>;
   label: string;
   claim: Claim | null;
   onChange: (claim: Claim | null) => void;
@@ -1766,7 +1899,8 @@ function ClaimEditor({
         <>
           <details>
             <summary>
-              <Link2 size={12} /> Evidence · {claim.source}
+              <Link2 size={12} /> Evidence ·{" "}
+              {sources[claim.source] || "Removed source · review this claim"}
             </summary>
             <blockquote>
               {claim.evidence_quote || "Add a source quotation below."}
@@ -1782,8 +1916,12 @@ function ClaimEditor({
                   })
                 }
               >
-                {["feedback", "page_url", "device", "browser"].map((source) => (
-                  <option key={source}>{source}</option>
+                {Array.from(
+                  new Set([...Object.keys(sources), claim.source]),
+                ).map((source) => (
+                  <option key={source} value={source}>
+                    {sources[source] || "Removed source · review required"}
+                  </option>
                 ))}
               </select>
             </label>
