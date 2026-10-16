@@ -36,6 +36,9 @@ import {
   X,
 } from "lucide-react";
 import EvidencePanel from "./EvidencePanel";
+import ShareProject from "./ShareProject";
+import CustomerContext from "./CustomerContext";
+import DeleteReportButton from "./DeleteReportButton";
 import {
   api,
   type Feedback,
@@ -149,6 +152,10 @@ function Modal({
 }
 
 export default function App() {
+  const [manualOpen, setManualOpen] = useState(() =>
+    Boolean(localStorage.getItem("bugbrief-active-id")),
+  );
+  const [sharing, setSharing] = useState<string | null>(null);
   const [view, setView] = useState<View>("overview");
   const [projects, setProjects] = useState<Project[]>([]);
   const [items, setItems] = useState<Feedback[]>([]);
@@ -204,6 +211,7 @@ export default function App() {
     };
   }, [!!selected]);
   const closeModal = useRef(() => setModal(null)).current;
+  const closeSharing = useRef(() => setSharing(null)).current;
   useEffect(() => {
     if (!modal && !selected) return;
     const previous = document.body.style.overflow;
@@ -275,6 +283,7 @@ export default function App() {
     page_url: "Page URL",
     device: "Device",
     browser: "Browser",
+    captured_context: "Captured submission context",
   };
   selected?.clarifications.forEach((entry, index) => {
     evidenceLabels[`clarification:${entry.id}`] =
@@ -286,6 +295,17 @@ export default function App() {
         `Screenshot ${index + 1}, observation ${observationIndex + 1} · unverified`;
     }),
   );
+  useEffect(() => {
+    const reload = () => {
+      if (document.visibilityState === "visible") refresh().catch(() => {});
+    };
+    const interval = setInterval(reload, 15000);
+    document.addEventListener("visibilitychange", reload);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", reload);
+    };
+  }, []);
   const reports = items.filter((i) => i.report);
   function evidenceUpdated(updated: Feedback) {
     setItems((current) =>
@@ -330,9 +350,21 @@ export default function App() {
     setStatusFilter("all");
   }
   function newFeedback() {
+    setManualOpen(true);
     navigate("feedback");
     composer.current?.focus();
     setTimeout(() => composer.current?.focus(), 30);
+  }
+  async function deleteReport(item: Feedback) {
+    await api(`/feedback/${item.id}`, "DELETE");
+    localStorage.removeItem(`bugbrief-report-${item.id}`);
+    if (selected?.id === item.id) setSelected(null);
+    if (activeId === item.id) {
+      setActiveId(null);
+      setDraft({ ...emptyDraft, project_id: item.project_id });
+    }
+    await refresh();
+    setNotice("Report and its evidence deleted.");
   }
   async function saveDraft(): Promise<Feedback> {
     if (!draft.project_id) {
@@ -437,6 +469,13 @@ export default function App() {
       navigate("feedback");
     }
   }
+  function share(id?: string) {
+    if (!projects.length) {
+      setModal("project");
+      return;
+    }
+    setSharing(id || projects[0].id);
+  }
   function startFresh() {
     setActiveId(null);
     setDraft({ ...emptyDraft, project_id: projects[0]?.id || "" });
@@ -535,6 +574,10 @@ export default function App() {
           )}
         </div>
         <div className="sidebar-bottom">
+          <a className="nav-item" href="/">
+            <ArrowRight size={18} />
+            <span>Switch role</span>
+          </a>
           <div className="small-note">
             <span className="tiny-spark">✳</span>
             <h4>
@@ -597,6 +640,15 @@ export default function App() {
               onClick={() => setModal("guide")}
             >
               <BookOpen size={18} />
+            </button>
+            <button
+              className="text-button agency-signout"
+              onClick={async () => {
+                await api("/auth/logout", "POST", {});
+                location.reload();
+              }}
+            >
+              Sign out
             </button>
             <span className="top-divider" />
             <span className="user-avatar top-avatar">Y</span>
@@ -664,6 +716,40 @@ export default function App() {
               workspace…
             </div>
           )}
+          {(view === "overview" || view === "projects") && (
+            <section className="customer-collection-banner">
+              <div>
+                <span className="eyebrow">FROM THEIR SCREEN TO YOUR INBOX</span>
+                <h2>Stop chasing the details.</h2>
+                <p>
+                  Give customers a feedback link or a button on their site.
+                  Their words, screenshots, browser context and follow-up
+                  answers arrive together.
+                </p>
+                <div className="collection-proof">
+                  <span>
+                    <Check size={12} />
+                    Customer submits directly
+                  </span>
+                  <span>
+                    <Check size={12} />
+                    You review the handoff
+                  </span>
+                </div>
+              </div>
+              <div className="collection-actions">
+                <button className="primary-button" onClick={() => share()}>
+                  <Link2 size={16} />
+                  Collect customer feedback
+                  <ArrowRight size={15} />
+                </button>
+                <span>
+                  {items.filter((item) => item.customer).length} customer
+                  submissions received
+                </span>
+              </div>
+            </section>
+          )}
           {view === "overview" && (
             <>
               <div className="stats-grid">
@@ -681,7 +767,10 @@ export default function App() {
                 />
                 <Stat
                   label="Ready for review"
-                  value={items.filter((i) => i.status === "review").length}
+                  value={
+                    items.filter((i) => i.status === "review" || !!i.customer)
+                      .length
+                  }
                   icon={<FileCheck2 size={19} />}
                   note="A human touch before the fix"
                 />
@@ -695,267 +784,303 @@ export default function App() {
             </>
           )}
           {(view === "overview" || view === "feedback") && (
-            <div className="work-grid">
-              <section className="capture-card">
-                <div className="card-title">
-                  <span className="icon-tile coral">
-                    <SquarePen size={20} />
-                  </span>
-                  <div>
-                    <h2>Start with what they said.</h2>
-                    <p>No perfect brief needed. Just the original feedback.</p>
-                  </div>
-                  <span className="subtle-tag">NEW FEEDBACK</span>
-                </div>
-                <div className="capture-body">
-                  <div className="project-label-row">
-                    <label htmlFor="project">
-                      Project <span className="required">*</span>
-                    </label>
-                    <button
-                      className="text-button"
-                      onClick={() => setModal("project")}
-                    >
-                      <Plus size={13} /> Create project
-                    </button>
-                  </div>
-                  <div className="select-wrap">
-                    <Folder size={16} />
-                    <select
-                      id="project"
-                      value={draft.project_id}
-                      onChange={(e) => {
-                        setDraft({ ...draft, project_id: e.target.value });
-                        setActiveId(null);
-                      }}
-                    >
-                      <option value="" disabled>
-                        Select a project
-                      </option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={15} />
-                  </div>
-                  <div className="feedback-label-row">
-                    <label htmlFor="feedback-text">
-                      Client feedback{" "}
-                      <span className="optional">or add a screenshot</span>
-                    </label>
-                    <span>English, हिंदी, or a little of both</span>
-                  </div>
-                  <div className="textarea-wrap">
-                    <textarea
-                      ref={composer}
-                      id="feedback-text"
-                      maxLength={8000}
-                      value={draft.text}
-                      onChange={(e) =>
-                        setDraft({ ...draft, text: e.target.value })
-                      }
-                      placeholder={
-                        "“Checkout pe Pay now click kiya, but nothing happens…”\n\nPaste a message, describe an issue, or tell us what went wrong."
-                      }
-                    />
-                    <div className="textarea-footer">
-                      <span>
-                        <Globe size={13} /> Write naturally. We’ll bring the
-                        structure.
-                      </span>
-                      <span>{draft.text.length.toLocaleString()} / 8,000</span>
+            <details
+              className="agency-capture"
+              open={view === "feedback" || manualOpen}
+              onToggle={(event) => setManualOpen(event.currentTarget.open)}
+            >
+              <summary>
+                <SquarePen size={16} />
+                <span>Add feedback on a customer’s behalf</span>
+                <span className="manual-intake-tag">MANUAL INTAKE</span>
+                <ChevronDown size={15} />
+              </summary>
+              <div className="work-grid">
+                <section className="capture-card">
+                  <div className="card-title">
+                    <span className="icon-tile coral">
+                      <SquarePen size={20} />
+                    </span>
+                    <div>
+                      <h2>Start with what they said.</h2>
+                      <p>
+                        No perfect brief needed. Just the original feedback.
+                      </p>
                     </div>
+                    <span className="subtle-tag">
+                      {activeFeedback?.customer
+                        ? "CUSTOMER SUBMISSION"
+                        : "NEW FEEDBACK"}
+                    </span>
                   </div>
-                  <button
-                    className="context-toggle"
-                    onClick={() => setShowContext(!showContext)}
-                    aria-expanded={showContext}
-                  >
-                    <Link2 size={15} />
-                    {showContext
-                      ? "Hide additional context"
-                      : "Add a page URL, device or browser"}
-                    <ChevronDown
-                      size={14}
-                      className={showContext ? "rotate" : ""}
-                    />
-                  </button>
-                  {showContext && (
-                    <div className="context-fields">
-                      <label>
-                        Page URL
-                        <input
-                          type="url"
-                          placeholder="https://your-project.com/checkout"
-                          value={draft.page_url}
-                          onChange={(e) =>
-                            setDraft({ ...draft, page_url: e.target.value })
-                          }
-                        />
+                  <div className="capture-body">
+                    <div className="project-label-row">
+                      <label htmlFor="project">
+                        Project <span className="required">*</span>
                       </label>
-                      <div className="two-fields">
-                        <label>
-                          Device
-                          <input
-                            placeholder="e.g. iPhone 14"
-                            maxLength={200}
-                            value={draft.device}
-                            onChange={(e) =>
-                              setDraft({ ...draft, device: e.target.value })
-                            }
-                          />
-                        </label>
-                        <label>
-                          Browser
-                          <input
-                            placeholder="e.g. Safari 18"
-                            maxLength={200}
-                            value={draft.browser}
-                            onChange={(e) =>
-                              setDraft({ ...draft, browser: e.target.value })
-                            }
-                          />
-                        </label>
-                      </div>
-                    </div>
-                  )}
-                  <EvidencePanel
-                    feedback={activeFeedback}
-                    ensureFeedback={saveDraft}
-                    onChange={evidenceUpdated}
-                    busy={busy}
-                    onBusy={setBusy}
-                  />
-                  <label className="consent">
-                    <input
-                      type="checkbox"
-                      checked={consent}
-                      onChange={(e) => setConsent(e.target.checked)}
-                    />
-                    <span>
-                      I’ve removed sensitive information and agree to send this
-                      feedback and saved evidence to Gemini.{" "}
                       <button
-                        className="inline-link"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setModal("settings");
+                        className="text-button"
+                        onClick={() => setModal("project")}
+                      >
+                        <Plus size={13} /> Create project
+                      </button>
+                    </div>
+                    <div className="select-wrap">
+                      <Folder size={16} />
+                      <select
+                        id="project"
+                        disabled={!!activeFeedback?.customer}
+                        value={draft.project_id}
+                        onChange={(e) => {
+                          setDraft({ ...draft, project_id: e.target.value });
+                          setActiveId(null);
                         }}
                       >
-                        Free tier data policy <ArrowUpRight size={11} />
-                      </button>
-                    </span>
-                  </label>
-                </div>
-                <div className="capture-footer">
-                  <span>
-                    <ShieldCheck size={15} /> Your original feedback stays
-                    saved.
-                  </span>
-                  <div>
+                        <option value="" disabled>
+                          Select a project
+                        </option>
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={15} />
+                    </div>
+                    <div className="feedback-label-row">
+                      <label htmlFor="feedback-text">
+                        Client feedback{" "}
+                        <span className="optional">or add a screenshot</span>
+                      </label>
+                      <span>English, हिंदी, or a little of both</span>
+                    </div>
+                    <div className="textarea-wrap">
+                      <textarea
+                        ref={composer}
+                        id="feedback-text"
+                        readOnly={!!activeFeedback?.customer}
+                        maxLength={8000}
+                        value={draft.text}
+                        onChange={(e) =>
+                          setDraft({ ...draft, text: e.target.value })
+                        }
+                        placeholder={
+                          "“Checkout pe Pay now click kiya, but nothing happens…”\n\nPaste a message, describe an issue, or tell us what went wrong."
+                        }
+                      />
+                      <div className="textarea-footer">
+                        <span>
+                          <Globe size={13} /> Write naturally. We’ll bring the
+                          structure.
+                        </span>
+                        <span>
+                          {draft.text.length.toLocaleString()} / 8,000
+                        </span>
+                      </div>
+                    </div>
                     <button
-                      className="secondary-button"
-                      disabled={
-                        busy ||
-                        (draft.text.trim().length < 3 && !hasSavedEvidence)
-                      }
-                      onClick={() => submit(false)}
+                      className="context-toggle"
+                      onClick={() => setShowContext(!showContext)}
+                      aria-expanded={showContext}
                     >
-                      Save draft
+                      <Link2 size={15} />
+                      {showContext
+                        ? "Hide additional context"
+                        : "Add a page URL, device or browser"}
+                      <ChevronDown
+                        size={14}
+                        className={showContext ? "rotate" : ""}
+                      />
                     </button>
-                    <button
-                      className="primary-button generate-button"
-                      disabled={
-                        busy ||
-                        !consent ||
-                        imagesNeedAnalysis ||
-                        (draft.text.trim().length < 3 && !hasSavedEvidence)
-                      }
-                      onClick={() => submit(true)}
-                    >
-                      {busy ? (
-                        <LoaderCircle size={16} className="spin" />
-                      ) : (
-                        <WandSparkles size={16} />
-                      )}{" "}
-                      {busy ? "Working…" : "Generate report"}
-                      {!busy && <ArrowRight size={15} />}
-                    </button>
+                    {showContext && (
+                      <div className="context-fields">
+                        <label>
+                          Page URL
+                          <input
+                            type="url"
+                            placeholder="https://your-project.com/checkout"
+                            value={draft.page_url}
+                            readOnly={!!activeFeedback?.customer}
+                            onChange={(e) =>
+                              setDraft({ ...draft, page_url: e.target.value })
+                            }
+                          />
+                        </label>
+                        <div className="two-fields">
+                          <label>
+                            Device
+                            <input
+                              placeholder="e.g. iPhone 14"
+                              maxLength={200}
+                              value={draft.device}
+                              readOnly={!!activeFeedback?.customer}
+                              onChange={(e) =>
+                                setDraft({ ...draft, device: e.target.value })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Browser
+                            <input
+                              placeholder="e.g. Safari 18"
+                              maxLength={200}
+                              value={draft.browser}
+                              readOnly={!!activeFeedback?.customer}
+                              onChange={(e) =>
+                                setDraft({ ...draft, browser: e.target.value })
+                              }
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                    {activeFeedback && (
+                      <CustomerContext feedback={activeFeedback} />
+                    )}
+                    <EvidencePanel
+                      feedback={activeFeedback}
+                      ensureFeedback={saveDraft}
+                      onChange={evidenceUpdated}
+                      busy={busy}
+                      onBusy={setBusy}
+                    />
+                    <label className="consent">
+                      <input
+                        type="checkbox"
+                        checked={consent}
+                        onChange={(e) => setConsent(e.target.checked)}
+                      />
+                      <span>
+                        I’ve removed sensitive information and agree to send
+                        this feedback and saved evidence to Gemini.{" "}
+                        <button
+                          className="inline-link"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setModal("settings");
+                          }}
+                        >
+                          Free tier data policy <ArrowUpRight size={11} />
+                        </button>
+                      </span>
+                    </label>
                   </div>
-                </div>
-              </section>
-              <aside className="workflow-card">
-                <div className="workflow-top">
-                  <span className="outline-spark">
-                    <Sparkles size={23} />
-                  </span>
-                  <span className="mini-pill">A CLEARER WAY TO FIX</span>
-                </div>
-                <h2>
-                  From “something’s off”
-                  <br />
-                  to “here’s the issue”.
-                </h2>
-                <p>
-                  A shared understanding, without
-                  <br className="desktop-break" /> the endless follow-ups.
-                </p>
-                <div className="workflow-steps">
-                  <WorkflowStep
-                    number="01"
-                    title="Capture the feedback"
-                    text="In your client’s words. In their language."
-                    icon={<MessageSquare size={15} />}
-                    active
-                  />
-                  <WorkflowStep
-                    number="02"
-                    title="Connect the details"
-                    text="AI separates the knowns from the gaps."
-                    icon={<Sparkles size={15} />}
-                  />
-                  <WorkflowStep
-                    number="03"
-                    title="Make it ready for a fix"
-                    text="Review, edit, and save a clear bug report."
-                    icon={<CheckCheck size={15} />}
-                  />
-                </div>
-                <div className="workflow-note">
-                  <ShieldCheck size={17} />
-                  <p>
-                    Evidence first. Assumptions never.
+                  <div className="capture-footer">
+                    {activeFeedback ? (
+                      <DeleteReportButton
+                        disabled={busy}
+                        onDelete={() => deleteReport(activeFeedback)}
+                      />
+                    ) : (
+                      <span>
+                        <ShieldCheck size={15} /> Your original feedback stays
+                        saved.
+                      </span>
+                    )}
+                    <div>
+                      <button
+                        className="secondary-button"
+                        disabled={
+                          busy ||
+                          (draft.text.trim().length < 3 && !hasSavedEvidence)
+                        }
+                        onClick={() => submit(false)}
+                      >
+                        Save draft
+                      </button>
+                      <button
+                        className="primary-button generate-button"
+                        disabled={
+                          busy ||
+                          !consent ||
+                          imagesNeedAnalysis ||
+                          (draft.text.trim().length < 3 && !hasSavedEvidence)
+                        }
+                        onClick={() => submit(true)}
+                      >
+                        {busy ? (
+                          <LoaderCircle size={16} className="spin" />
+                        ) : (
+                          <WandSparkles size={16} />
+                        )}{" "}
+                        {busy ? "Working…" : "Generate report"}
+                        {!busy && <ArrowRight size={15} />}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+                <aside className="workflow-card">
+                  <div className="workflow-top">
+                    <span className="outline-spark">
+                      <Sparkles size={23} />
+                    </span>
+                    <span className="mini-pill">A CLEARER WAY TO FIX</span>
+                  </div>
+                  <h2>
+                    From “something’s off”
                     <br />
-                    <span>You always have the final say.</span>
+                    to “here’s the issue”.
+                  </h2>
+                  <p>
+                    A shared understanding, without
+                    <br className="desktop-break" /> the endless follow-ups.
                   </p>
-                </div>
-                <div className="workflow-art" aria-hidden="true">
-                  <span className="orbit orbit-one" />
-                  <span className="orbit orbit-two" />
-                  <span className="art-spark">✳</span>
-                </div>
-              </aside>
-            </div>
+                  <div className="workflow-steps">
+                    <WorkflowStep
+                      number="01"
+                      title="Capture the feedback"
+                      text="In your client’s words. In their language."
+                      icon={<MessageSquare size={15} />}
+                      active
+                    />
+                    <WorkflowStep
+                      number="02"
+                      title="Connect the details"
+                      text="AI separates the knowns from the gaps."
+                      icon={<Sparkles size={15} />}
+                    />
+                    <WorkflowStep
+                      number="03"
+                      title="Make it ready for a fix"
+                      text="Review, edit, and save a clear bug report."
+                      icon={<CheckCheck size={15} />}
+                    />
+                  </div>
+                  <div className="workflow-note">
+                    <ShieldCheck size={17} />
+                    <p>
+                      Evidence first. Assumptions never.
+                      <br />
+                      <span>You always have the final say.</span>
+                    </p>
+                  </div>
+                  <div className="workflow-art" aria-hidden="true">
+                    <span className="orbit orbit-one" />
+                    <span className="orbit orbit-two" />
+                    <span className="art-spark">✳</span>
+                  </div>
+                </aside>
+              </div>
+            </details>
           )}
           {view === "projects" ? (
             <section className="projects-grid">
               {projects.map((p, i) => (
-                <button
-                  className="project-card"
-                  key={p.id}
-                  onClick={() => {
-                    setProjectFilter(p.id);
-                    navigate("feedback");
-                  }}
-                >
-                  <span className={`project-initial initial-${i % 3}`}>
-                    {p.name.slice(0, 1).toUpperCase()}
-                  </span>
-                  <ArrowUpRight className="project-arrow" size={18} />
-                  <h2>{p.name}</h2>
-                  <p>{p.url || "No project URL added"}</p>
+                <article className="project-card" key={p.id}>
+                  <button
+                    className="project-open"
+                    onClick={() => {
+                      setProjectFilter(p.id);
+                      navigate("feedback");
+                    }}
+                  >
+                    <span className={`project-initial initial-${i % 3}`}>
+                      {p.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <ArrowUpRight className="project-arrow" size={18} />
+                    <h2>{p.name}</h2>
+                    <p>{p.url || "No project URL added"}</p>
+                  </button>
                   <div>
                     <span>
                       {items.filter((f) => f.project_id === p.id).length}{" "}
@@ -969,7 +1094,15 @@ export default function App() {
                       reports
                     </span>
                   </div>
-                </button>
+                  <button
+                    className="share-project-button"
+                    onClick={() => share(p.id)}
+                  >
+                    <Link2 size={13} />
+                    Share feedback link
+                    <ArrowUpRight size={13} />
+                  </button>
+                </article>
               ))}
               <button
                 className="project-card new-project-card"
@@ -1094,6 +1227,11 @@ export default function App() {
                                 "Untitled feedback"}
                             </strong>
                             <small>
+                              {item.customer && (
+                                <span className="customer-source-badge">
+                                  Customer ·{" "}
+                                </span>
+                              )}
                               {item.report
                                 ? item.report.category
                                 : "Original client feedback"}
@@ -1108,7 +1246,11 @@ export default function App() {
                         <span>
                           <span className={`status-pill ${item.status}`}>
                             <span />
-                            {item.status === "review" ? "In review" : "Draft"}
+                            {item.customer && item.status === "draft"
+                              ? "Needs a brief"
+                              : item.status === "review"
+                                ? "In review"
+                                : "Draft"}
                           </span>
                         </span>
                         <span className="date-cell">
@@ -1180,8 +1322,8 @@ export default function App() {
           )}
           <footer className="page-footer">
             <span>
-              <span className="footer-logo">b✳</span> A little clarity. A better
-              handoff.
+              <span className="footer-logo">b✳</span> A little clarity. A
+              better handoff.
             </span>
             <button onClick={() => setModal("settings")}>
               <span className={`connection-dot ${ready ? "connected" : ""}`} />
@@ -1198,6 +1340,13 @@ export default function App() {
           </footer>
         </main>
       </div>
+      {sharing && (
+        <ShareProject
+          projects={projects}
+          initialId={sharing}
+          close={closeSharing}
+        />
+      )}
       {modal === "project" && (
         <Modal
           title="Give your project a home."
@@ -1473,6 +1622,7 @@ export default function App() {
                     {selected.text ||
                       "No written feedback supplied. See the reviewed screenshots."}
                   </blockquote>
+                  <CustomerContext feedback={selected} />
                   <div className="source-details">
                     <p>
                       <strong>Project</strong>
@@ -1498,6 +1648,7 @@ export default function App() {
                 </>
               ) : editorTab === "evidence" ? (
                 <>
+                  <CustomerContext feedback={selected} />
                   <EvidencePanel
                     feedback={selected}
                     ensureFeedback={preserveSelectedReport}
@@ -1733,9 +1884,10 @@ export default function App() {
               )}
             </div>
             <div className="drawer-footer">
-              <span>
-                <ShieldCheck size={15} /> Original evidence preserved
-              </span>
+              <DeleteReportButton
+                disabled={busy}
+                onDelete={() => deleteReport(selected)}
+              />
               <button
                 className="primary-button"
                 disabled={busy || !editReport}

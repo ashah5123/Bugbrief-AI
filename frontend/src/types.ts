@@ -44,7 +44,24 @@ export type Clarification = {
   answer: string;
   created_at: string;
 };
+export type CustomerMetadata = {
+  reporter_name: string;
+  stage: string;
+  submitted_at: string | null;
+  context: {
+    user_agent?: string;
+    viewport_width?: number;
+    viewport_height?: number;
+    screen_width?: number;
+    screen_height?: number;
+    language?: string;
+    timezone?: string;
+    source?: string;
+    same_browser_confirmed?: boolean;
+  };
+};
 export type Feedback = {
+  customer: CustomerMetadata | null;
   id: string;
   project_id: string;
   attachments: Attachment[];

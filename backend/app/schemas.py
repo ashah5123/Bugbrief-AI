@@ -1,4 +1,5 @@
 from typing import Literal, Annotated
+from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class StrictModel(BaseModel):
@@ -18,8 +19,14 @@ class ProjectIn(StrictModel):
     @field_validator('url')
     @classmethod
     def url_check(cls, value):
-        if value and not value.startswith(('https://', 'http://')):
-            raise ValueError('Use an http:// or https:// URL')
+        if value:
+            try:
+                parsed = urlsplit(value)
+                if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() for c in value):
+                    raise ValueError('Invalid URL')
+                parsed.port
+            except ValueError:
+                raise ValueError('Use a valid http:// or https:// URL without embedded credentials')
         return value
 
 class FeedbackIn(StrictModel):
@@ -40,7 +47,7 @@ class FeedbackIn(StrictModel):
 class Claim(StrictModel):
     text: str = Field(min_length=1, max_length=2000)
     evidence_quote: str = Field(min_length=1, max_length=2000)
-    source: str = Field(pattern=r'^(feedback|page_url|device|browser|clarification:[a-f0-9-]{36}|screenshot:[a-f0-9-]{36}:[0-9]{1,2})$')
+    source: str = Field(pattern=r'^(feedback|page_url|device|browser|captured_context|clarification:[a-f0-9-]{36}|screenshot:[a-f0-9-]{36}:[0-9]{1,2})$')
 
 class BugReport(StrictModel):
     title: str = Field(min_length=3, max_length=180)

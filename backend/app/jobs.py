@@ -21,8 +21,9 @@ def usage(db):
             'average_latency_ms': round(sum(j.latency_ms for j in jobs) / len(jobs)) if jobs else 0,
             'resets': '00:00 UTC'}
 
-def ensure_idle(app):
-    if app.state.job_lock.locked():
+def ensure_idle(app, feedback_id=None):
+    active = getattr(app.state, 'active_feedback_id', None)
+    if app.state.job_lock.locked() and (feedback_id is None or active is None or feedback_id == active):
         raise HTTPException(409, 'Wait for the current processing job to finish before changing evidence or reports.')
 
 def evidence_changed(item):
@@ -32,7 +33,7 @@ def evidence_changed(item):
     item.proposal = None
     item.error = None
 
-async def run_job(app, db, item, kind, operation, on_success, error_target=None):
+async def run_job(app, db, item, kind, operation, on_success, error_target=None, before_reserve=None):
     if not settings.gemini_api_key:
         raise HTTPException(503, 'Add GEMINI_API_KEY to backend/.env and restart. Your feedback is saved.')
     if not settings.free_tier_confirmed:
@@ -42,9 +43,12 @@ async def run_job(app, db, item, kind, operation, on_success, error_target=None)
         current = usage(db)
         if current['paused'] or current['attempts'] >= settings.ai_daily_limit:
             raise HTTPException(429, 'Processing is paused until 00:00 UTC. Your feedback, screenshots and edits are safe.')
+        if before_reserve is not None:
+            before_reserve()
         job = AIJob(feedback_id=item.id, day=day(), model=settings.gemini_model, kind=kind)
         db.add(job)
         db.commit()
+        app.state.active_feedback_id = item.id
         start = time.monotonic()
         try:
             result = await operation()
@@ -63,5 +67,6 @@ async def run_job(app, db, item, kind, operation, on_success, error_target=None)
             db.commit()
             raise HTTPException(exc.status, exc.message)
         finally:
+            app.state.active_feedback_id = None
             job.latency_ms = (time.monotonic() - start) * 1000
         db.commit()

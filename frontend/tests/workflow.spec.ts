@@ -5,7 +5,7 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
 }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("/");
+  await page.goto("/workspace");
   await expect(
     page.getByRole("heading", { name: "A little feedback. A lot of clarity." }),
   ).toBeVisible();
@@ -16,6 +16,7 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
   const initialCount = await page.locator(".feedback-row").count();
   const initialTotal = (await (await page.request.get("/api/feedback")).json())
     .length;
+  await page.locator(".agency-capture > summary").click();
   await page
     .locator("main")
     .getByRole("button", { name: "Create project", exact: true })
@@ -120,7 +121,7 @@ test("manual report fixture: edit, save, reopen and retain source evidence", asy
     { data: { version: feedback.version, report } },
   );
   expect(result.ok()).toBe(true);
-  await page.goto("/");
+  await page.goto("/workspace");
   await page.getByRole("button", { name: report.title }).click();
   const drawer = page.getByRole("dialog", { name: "Review bug report" });
   await expect(drawer).toBeVisible();

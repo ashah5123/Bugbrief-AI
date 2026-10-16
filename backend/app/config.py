@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / 'backend' / '.env', extra='ignore')
     database_url: str = f"sqlite:///{ROOT / 'data' / 'bugbrief.db'}"
     attachments_dir: Path = ROOT / 'data' / 'attachments'
+    agency_access_code: str = ''
+    agency_code_path: Path = ROOT / 'data' / 'agency-access.txt'
+    public_ai_daily_limit: int = Field(default=6, ge=1, le=20)
+    public_submissions_daily_limit: int = Field(default=10, ge=1, le=100)
     gemini_api_key: str = ''
     free_tier_confirmed: bool = False
     gemini_model: str = 'gemini-3.5-flash-lite'

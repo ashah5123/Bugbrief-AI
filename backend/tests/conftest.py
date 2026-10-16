@@ -13,6 +13,8 @@ from app.storage import LocalStorage
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    from app.customer_auth import _attempts
+    _attempts.clear()
     engine = make_engine(f'sqlite:///{tmp_path / "test.db"}')
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
@@ -20,6 +22,8 @@ def client(tmp_path, monkeypatch):
         with factory() as session:
             yield session
     app.dependency_overrides[get_db] = db_override
+    monkeypatch.setattr(settings, 'agency_access_code', 'test-agency-access-code')
+    monkeypatch.setattr(settings, 'agency_code_path', tmp_path / 'owner-code.txt')
     monkeypatch.setattr(settings, 'gemini_api_key', 'test-key-never-sent')
     monkeypatch.setattr(settings, 'free_tier_confirmed', True)
     monkeypatch.setattr(settings, 'ai_daily_limit', 20)
@@ -27,6 +31,7 @@ def client(tmp_path, monkeypatch):
     app.state.image_analyzer = GeminiImageAnalyzer(settings)
     app.state.storage = LocalStorage(tmp_path / 'attachments')
     with TestClient(app) as c:
+        c.headers['X-Agency-Key'] = 'test-agency-access-code'
         yield c
     app.dependency_overrides.clear()
     engine.dispose()

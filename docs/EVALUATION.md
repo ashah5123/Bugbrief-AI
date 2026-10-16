@@ -29,3 +29,10 @@ Duplicate and unrelated reports: semantic matching is deferred. Reports are neit
 | Evidence deletion | Remove an image after a manual report edit | Image bytes gone; report retained, pending proposal invalidated and review needed. |
 
 Redaction and deletion behavior, source validation, persistence and failure handling were tested automatically. Useful observation quality, useful questions and factual accuracy still require actual live review. Log latency and token usage from Settings & usage alongside manual accuracy scores.
+
+
+## Customer collection validation
+
+A real English customer-browser scenario was executed: ambiguous checkout feedback produced three hosted clarification questions, customer answers were saved, a proposed revision incorporated the evidence, and the final submission appeared in the agency inbox. The widget captured the demo page path and actual parent viewport. Anonymous customer access to agency records was denied. These checks validate the workflow, not general model accuracy or customer willingness to pay.
+
+For a pilot, measure (1) issues submitted with a usable affected URL, (2) browser confirmation rate, (3) useful questions answered before agency review, (4) developer reports requiring another customer message, and (5) customer completion/abandonment. The current UI counts received submissions and records their saved evidence; a full analytics dashboard is not implemented.

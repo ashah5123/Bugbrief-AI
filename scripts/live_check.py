@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from app.config import settings
+from app.auth import access_code
 
 async def main(args):
     if not settings.gemini_api_key or not settings.free_tier_confirmed:
@@ -22,7 +23,7 @@ async def main(args):
             return 2
         mime = 'image/jpeg' if path.suffix.lower() in ('.jpg', '.jpeg') else 'image/png'
         image = (path.name, path.read_bytes(), mime)
-    async with httpx.AsyncClient(base_url='http://127.0.0.1:8001', timeout=100) as client:
+    async with httpx.AsyncClient(base_url='http://127.0.0.1:8001', timeout=100, headers={'X-Agency-Key': access_code()}) as client:
         project = await client.post('/api/projects', json={'name': 'Live API check'})
         project.raise_for_status()
         feedback = await client.post('/api/feedback', json={'project_id': project.json()['id'], 'text': 'I clicked Pay now on checkout. Nothing happened. I expected the payment form.'})

@@ -7,9 +7,17 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:15173",
     channel: "chrome",
+    extraHTTPHeaders: { "X-Agency-Key": "e2e-agency-access-code" },
     trace: "retain-on-failure",
   },
   webServer: [
+    {
+      command:
+        "../.venv/bin/python ../scripts/test_demo_server.py",
+      port: 14174,
+      reuseExistingServer: false,
+      timeout: 30000,
+    },
     {
       command: "../.venv/bin/python ../scripts/test_server.py",
       port: 18000,

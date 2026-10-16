@@ -202,7 +202,7 @@ def test_actual_concurrent_job_blocks_evidence_and_report_mutations(client,draft
                 await release.wait()
                 return Generation(BugReport.model_validate(report_data))
         app.state.generator=BlockingGenerator()
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://testserver') as remote:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://testserver',headers={'X-Agency-Key':'test-agency-access-code'}) as remote:
             task=asyncio.create_task(remote.post(f'/api/feedback/{draft["id"]}/generate',json={'consent':True}))
             await asyncio.wait_for(entered.wait(),timeout=3)
             try:

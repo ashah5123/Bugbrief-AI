@@ -9,7 +9,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from PIL import Image, ImageOps, UnidentifiedImageError
 from .db import get_db
-from .models import Attachment, Clarification, Feedback, now
+from .models import Attachment, Clarification, Feedback, CustomerSubmission, now
 from .schemas import ClarificationIn, GenerateIn
 from .jobs import ensure_idle, evidence_changed, run_job
 
@@ -20,7 +20,7 @@ MAX_ATTACHMENTS = 3
 
 def get_feedback(db, feedback_id):
     item = db.get(Feedback, feedback_id)
-    if item is None:
+    if item is None or item.deleted_at is not None:
         raise HTTPException(404, 'Feedback not found')
     return item
 
@@ -35,10 +35,17 @@ def serialize(item, db=None):
     if isinstance(item, Feedback) and db is not None:
         result['attachments'] = [serialize(a) for a in attachments(db, item.id)]
         result['clarifications'] = [serialize(c) for c in clarifications(db, item.id)]
+        customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
+        result['customer'] = {'reporter_name': customer.reporter_name, 'stage': customer.stage, 'context': customer.context, 'submitted_at': customer.submitted_at} if customer else None
     return result
 
 def report_evidence(db, item):
     evidence = {'feedback': item.text, 'page_url': item.page_url, 'device': item.device, 'browser': item.browser}
+    customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
+    if customer and customer.context:
+        import json
+        qualifier = 'Customer confirmed this is the issue browser.' if customer.context.get('same_browser_confirmed') else 'Captured in the submission browser only; NOT confirmed as the issue browser or original issue viewport.'
+        evidence['captured_context'] = qualifier + ' ' + json.dumps(customer.context, ensure_ascii=False)
     for answer in clarifications(db, item.id):
         evidence[f'clarification:{answer.id}'] = answer.answer
         evidence[f'question_context:{answer.id}'] = answer.question
@@ -96,7 +103,7 @@ def detail(feedback_id: str, db: Session = Depends(get_db)):
 async def upload(feedback_id: str, request: Request, filename: str = 'screenshot.png', reviewed: bool = False, db: Session = Depends(get_db)):
     content = await request.body()
     item = get_feedback(db, feedback_id)
-    ensure_idle(request.app)
+    ensure_idle(request.app, feedback_id)
     if not reviewed:
         raise HTTPException(400, 'Review and redact the screenshot before saving it. Explicit review confirmation is required.')
     if len(attachments(db, feedback_id)) >= MAX_ATTACHMENTS:
@@ -134,7 +141,7 @@ def content(feedback_id: str, attachment_id: str, request: Request, db: Session 
 async def delete(feedback_id: str, attachment_id: str, request: Request, db: Session = Depends(get_db)):
     item = get_feedback(db, feedback_id)
     image = get_attachment(db, feedback_id, attachment_id)
-    ensure_idle(request.app)
+    ensure_idle(request.app, feedback_id)
     request.app.state.storage.delete(image.storage_key)
     image.deleted_at = now()  # Tombstone preserves old report provenance; bytes are removed.
     image.analysis = None
@@ -165,7 +172,7 @@ async def analyze(feedback_id: str, attachment_id: str, data: GenerateIn, reques
 @router.post('/{feedback_id}/clarifications', status_code=201)
 async def answer(feedback_id: str, data: ClarificationIn, request: Request, db: Session = Depends(get_db)):
     item = get_feedback(db, feedback_id)
-    ensure_idle(request.app)
+    ensure_idle(request.app, feedback_id)
     count = db.scalar(select(func.count()).select_from(Clarification).where(Clarification.feedback_id == feedback_id))
     if count >= 20:
         raise HTTPException(409, 'Maximum 20 clarification entries per feedback item.')

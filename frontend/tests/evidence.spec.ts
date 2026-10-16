@@ -9,7 +9,8 @@ test("review, redact, save, preserve on missing key, reload and delete screensho
       data: { name: `Screenshot project ${info.project.name}` },
     })
   ).json();
-  await page.goto("/");
+  await page.goto("/workspace");
+  await page.locator(".agency-capture > summary").click();
   await page.locator("#project").selectOption(p.id);
   const source = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
@@ -25,13 +26,11 @@ test("review, redact, save, preserve on missing key, reload and delete screensho
     ctx.fillText("Checkout", 180, 120);
     return canvas.toDataURL("image/png").split(",")[1];
   });
-  await page
-    .getByLabel("Choose screenshot")
-    .setInputFiles({
-      name: "checkout.png",
-      mimeType: "image/png",
-      buffer: Buffer.from(source, "base64"),
-    });
+  await page.getByLabel("Choose screenshot").setInputFiles({
+    name: "checkout.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(source, "base64"),
+  });
   await expect(
     page.getByRole("button", { name: "Save reviewed screenshot", exact: true }),
   ).toBeDisabled();
@@ -142,7 +141,7 @@ test("answer suggested questions, keep corrections and preserve unsaved manual r
   await request.put(`http://127.0.0.1:18000/api/feedback/${item.id}/report`, {
     data: { version: item.version, report },
   });
-  await page.goto("/");
+  await page.goto("/workspace");
   await page.getByRole("button", { name: new RegExp(report.title) }).click();
   const drawer = page.getByRole("dialog", { name: "Review bug report" });
   const manualTitle = `Keep these manual edits ${info.project.name}`;
