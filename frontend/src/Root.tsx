@@ -1,10 +1,13 @@
 import App from "./App";
+import AccountSecurity from "./AccountSecurity";
+import TeamManagement from "./TeamManagement";
 import AgencyGate from "./AgencyGate";
 import CustomerIntake from "./CustomerIntake";
 import DemoSite from "./DemoSite";
 import { Welcome } from "./Welcome";
 import CustomerPortal from "./CustomerPortal";
 export default function Root() {
+  if (location.pathname === "/account") return <AccountSecurity />;
   if (location.pathname === "/" || location.pathname === "") return <Welcome />;
   if (location.pathname === "/customer") return <CustomerPortal />;
   if (location.pathname === "/customer/signup")
@@ -31,9 +34,12 @@ export default function Root() {
       </div>
     );
   if (
-    !["/workspace", "/workspace/signup", "/workspace/signin"].includes(
-      location.pathname,
-    )
+    ![
+      "/workspace",
+      "/workspace/signup",
+      "/workspace/signin",
+      "/workspace/team",
+    ].includes(location.pathname)
   )
     return <Welcome />;
   return (
@@ -46,7 +52,7 @@ export default function Root() {
             : "home"
       }
     >
-      <App />
+      {location.pathname === "/workspace/team" ? <TeamManagement /> : <App />}
     </AgencyGate>
   );
 }

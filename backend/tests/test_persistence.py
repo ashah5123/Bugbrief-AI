@@ -20,7 +20,7 @@ def test_phase_one_upgrade_and_phase_two_restart(tmp_path):
     def process(code):
         subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
     migration('0001')
-    process("from app.db import SessionLocal; from app.models import Project,Feedback; s=SessionLocal(); s.add(Project(id='p',name='Existing project',url='')); s.commit(); s.execute(__import__('sqlalchemy').text(\"INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,report,version,created_at,updated_at) VALUES ('f','p','Existing original feedback','','','','review',:report,1,'old','old')\"), {'report':__import__('json').dumps({'title':'Saved manual edit'})}); s.commit(); s.close()")
+    process("from app.db import SessionLocal; from app.models import Project,Feedback; s=SessionLocal(); s.execute(__import__('sqlalchemy').text(\"INSERT INTO projects (id,name,url,created_at) VALUES ('p','Existing project','','old')\")); s.commit(); s.execute(__import__('sqlalchemy').text(\"INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,report,version,created_at,updated_at) VALUES ('f','p','Existing original feedback','','','','review',:report,1,'old','old')\"), {'report':__import__('json').dumps({'title':'Saved manual edit'})}); s.commit(); s.close()")
     migration('head')
     process("from app.db import SessionLocal; from app.models import Attachment,Clarification,AIJob; from app.jobs import day; from app.config import settings; from app.storage import LocalStorage; from PIL import Image; from io import BytesIO; b=BytesIO(); Image.new('RGB',(10,10),'black').save(b,format='PNG'); raw=b.getvalue(); LocalStorage(settings.attachments_dir).put('reviewed.png',raw); s=SessionLocal(); s.add(Attachment(id='a',feedback_id='f',filename='reviewed.png',storage_key='reviewed.png',mime_type='image/png',size=len(raw),width=10,height=10,sha256='test',reviewed_at='test',analysis={'observations':[],'limitations':['Still image only.']})); s.add(Clarification(feedback_id='f',question='Which browser?',answer='Safari')); s.add(AIJob(feedback_id='f',day=day(),model='test-model',kind='vision',outcome='quota')); s.commit(); s.close()")
     process("from fastapi.testclient import TestClient; from app.main import app; c=TestClient(app); c.headers['X-Agency-Key']='restart-test-access-code'; r=c.get('/api/feedback/f').json(); assert r['text']=='Existing original feedback'; assert r['report']['title']=='Saved manual edit'; assert r['clarifications'][0]['answer']=='Safari'; assert r['attachments'][0]['analysis']['limitations']==['Still image only.']; assert c.get('/api/feedback/f/attachments/a/content').status_code==200; assert c.get('/api/health').json()['usage']['paused'] is True; assert c.get('/api/health').json()['usage']['attempts']==1")
@@ -194,6 +194,7 @@ with SessionLocal() as db:
 with TestClient(app) as c:
     c.headers['X-Agency-Key']='progress-restart-code'
     project=c.post('/api/projects',json={'name':'Progress project'}).json()
+    assert c.post('/api/projects/'+project['id']+'/members/employee',json={'email':'progress@example.com'}).status_code==200
     link=c.post('/api/projects/'+project['id']+'/intake-link',json={}).json()['token']
     customer=c.post('/api/public/intake/'+link+'/submissions',json={'client_nonce':'persistent-progress-nonce-123','text':'Keep this progress.'}).json()
     c.post('/api/public/submissions/'+customer['access_token']+'/submit',json={})
@@ -218,4 +219,87 @@ with TestClient(app) as c:
     assert c.get('/api/public/submissions/'+manifest['token']).status_code==404
 """
     for code in (create, read):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+
+
+def test_project_access_upgrade_preserves_existing_mail_and_notification_state(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    path = tmp_path / 'project-upgrade.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{path}', 'AGENCY_ACCESS_CODE': 'project-persistence-owner-code', 'MAIL_MODE': 'local'}
+    def migrate(version):
+        subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', version], cwd=root, env=env, check=True, capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+    migrate('0008')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at) VALUES ('p','Existing private project','','old')")
+        db.execute("INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Preserved feedback','','','','draft',1,'old','old')")
+        db.execute("INSERT INTO employee_accounts (id,email,name,password_hash,created_at) VALUES ('active','active@example.test','Active employee','test-hash','old')")
+        db.execute("INSERT INTO employee_accounts (id,email,name,password_hash,created_at,disabled_at) VALUES ('disabled','disabled@example.test','Former employee','test-hash','old','old')")
+        db.execute("INSERT INTO mail_messages (id,recipient,subject,body,delivery,created_at) VALUES ('mail','active@example.test','Existing verification','Preserved security message','local','old')")
+    migrate('head')
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT employee_id,project_id FROM employee_projects').fetchall() == [('active','p')]
+        assert db.execute('SELECT customer_access FROM projects').fetchone()[0] == 'link'
+        assert db.execute('SELECT body,notification_id FROM mail_messages').fetchone() == ('Preserved security message',None)
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    process("""
+from app.db import SessionLocal
+from app.models import Notification,NotificationPreference
+with SessionLocal() as db:
+    db.add(Notification(id='notice',scope='owner',account_id='owner',feedback_id='f',kind='customer_reply',title='Persistent alert'))
+    db.add(NotificationPreference(scope='employee',account_id='active',email_enabled=1))
+    db.commit()
+""")
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as client:
+    client.headers['X-Agency-Key']='project-persistence-owner-code'
+    inbox=client.get('/api/auth/notifications/company').json()
+    assert inbox['unread_count']==1 and inbox['items'][0]['title']=='Persistent alert'
+    assert client.post('/api/auth/notifications/company/read-report',json={'report':'f'}).json()['changed'] is True
+""")
+    process("""
+from app.db import SessionLocal
+from app.models import Notification,NotificationPreference,MailMessage
+with SessionLocal() as db:
+    assert db.get(Notification,'notice').read_at
+    assert db.get(NotificationPreference,('employee','active')).email_enabled==1
+    assert db.get(MailMessage,'mail').body=='Preserved security message'
+""")
+
+
+def test_owner_session_survives_restart_and_logout_revokes_replay(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{tmp_path/"owners.db"}',
+           'OWNER_MANIFEST': str(tmp_path/'owner-session.txt'), 'AGENCY_ACCESS_CODE':'owner-session-restart-code', 'MAIL_MODE':'local'}
+    subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade','head'],cwd=root,env=env,check=True,capture_output=True)
+    create = """
+import os
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as client:
+    assert client.post('/api/auth/login',json={'code':'owner-session-restart-code'}).status_code==200
+    open(os.environ['OWNER_MANIFEST'],'w').write(client.cookies.get('bugbrief_agency'))
+"""
+    logout = """
+import os
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as client:
+    client.cookies.set('bugbrief_agency',open(os.environ['OWNER_MANIFEST']).read())
+    assert client.get('/api/team').json()['can_manage'] is True
+    assert client.post('/api/auth/logout').status_code==200
+"""
+    replay = """
+import os
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as client:
+    client.cookies.set('bugbrief_agency',open(os.environ['OWNER_MANIFEST']).read())
+    assert client.get('/api/projects').status_code==401
+"""
+    for code in (create,logout,replay):
         subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)

@@ -60,8 +60,9 @@ export type CustomerMetadata = {
     same_browser_confirmed?: boolean;
   };
 };
-export type IssueEmployee = { id: string; name: string };
+export type IssueEmployee = { id: string; name: string; project_ids: string[] };
 export type IssueWorkflow = {
+  retest_version?: number;
   status: string;
   label: string;
   assigned_to: { name: string } | null;
@@ -108,6 +109,15 @@ export type Health = {
     resets: string;
   };
 };
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function api<T>(
   path: string,
   method = "GET",
@@ -127,10 +137,11 @@ export async function api<T>(
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(
+    throw new ApiError(
       typeof data.detail === "string"
         ? data.detail
         : "Please check the form fields and try again.",
+      response.status,
     );
   }
   return response.json();

@@ -69,7 +69,7 @@ def require_customer(request: Request, db: Session = Depends(get_db)):
 
 
 def profile(account):
-    return {'id': account.id, 'name': account.name, 'email': account.email}
+    return {'id': account.id, 'name': account.name, 'email': account.email, 'email_verified': bool(account.email_verified_at)}
 
 
 def end_session(request, db):
@@ -135,6 +135,8 @@ def register(data: Register, request: Request, response: Response, db: Session =
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, 'An account already uses this email. Sign in instead.')
+    from .account_management import issue_action
+    issue_action(db, 'customer', 'verify', account.email)
     return start_session(account, request, response, db)
 
 

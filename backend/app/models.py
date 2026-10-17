@@ -12,6 +12,7 @@ def now():
 
 class Project(Base):
     __tablename__ = 'projects'
+    customer_access: Mapped[str] = mapped_column(String, default='link', server_default='link')
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(100))
     url: Mapped[str] = mapped_column(String(2000), default='')
@@ -106,6 +107,7 @@ class CustomerAccount(Base):
     email: Mapped[str] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(80))
     password_hash: Mapped[str] = mapped_column(String)
+    email_verified_at: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(String, default=now)
 
 
@@ -118,6 +120,7 @@ class CustomerSession(Base):
 
 class CustomerMembership(Base):
     __tablename__ = 'customer_memberships'
+    revoked_at: Mapped[str | None] = mapped_column(String, nullable=True)
     __table_args__ = (UniqueConstraint('account_id', 'project_id'),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     account_id: Mapped[str] = mapped_column(ForeignKey('customer_accounts.id'), index=True)
@@ -128,10 +131,12 @@ class CustomerMembership(Base):
 
 class EmployeeAccount(Base):
     __tablename__ = 'employee_accounts'
+    disabled_at: Mapped[str | None] = mapped_column(String, nullable=True)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     email: Mapped[str] = mapped_column(String(254), unique=True)
     name: Mapped[str] = mapped_column(String(80))
     password_hash: Mapped[str] = mapped_column(String)
+    email_verified_at: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(String, default=now)
 
 
@@ -158,3 +163,69 @@ class IssueEvent(Base):
     label: Mapped[str] = mapped_column(String(250))
     note: Mapped[str] = mapped_column(String(1000), default='')
     created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class ReportMessage(Base):
+    __tablename__ = 'report_messages'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
+    visibility: Mapped[str] = mapped_column(String)
+    author_role: Mapped[str] = mapped_column(String)
+    author_name: Mapped[str] = mapped_column(String(80))
+    body: Mapped[str] = mapped_column(String(4000))
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class AccountAction(Base):
+    __tablename__ = 'account_actions'
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    scope: Mapped[str] = mapped_column(String)
+    kind: Mapped[str] = mapped_column(String)
+    email: Mapped[str] = mapped_column(String(254))
+    expires_at: Mapped[float] = mapped_column(Float)
+    used_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class MailMessage(Base):
+    __tablename__ = 'mail_messages'
+    notification_id: Mapped[str | None] = mapped_column(ForeignKey('notifications.id'), nullable=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    recipient: Mapped[str] = mapped_column(String(254))
+    subject: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    delivery: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class EmployeeProject(Base):
+    __tablename__ = 'employee_projects'
+    employee_id: Mapped[str] = mapped_column(ForeignKey('employee_accounts.id'), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class NotificationPreference(Base):
+    __tablename__ = 'notification_preferences'
+    scope: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String, primary_key=True)
+    email_enabled: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class Notification(Base):
+    __tablename__ = 'notifications'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    scope: Mapped[str] = mapped_column(String, index=True)
+    account_id: Mapped[str] = mapped_column(String, index=True)
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
+    kind: Mapped[str] = mapped_column(String)
+    title: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[str] = mapped_column(String, default=now)
+    read_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class OwnerSession(Base):
+    __tablename__ = 'owner_sessions'
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    credential_hash: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[float] = mapped_column(Float)

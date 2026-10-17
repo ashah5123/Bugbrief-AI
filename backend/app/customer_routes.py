@@ -10,6 +10,7 @@ from .customer_auth import require_customer
 from .customer_projects import connect_project
 from .intake import active_link, snapshot
 from .workflow import progress_snapshot
+from .project_access import customer_can_access, require_customer_project
 
 router = APIRouter(prefix='/api/customer')
 
@@ -23,6 +24,7 @@ def reports(account=Depends(require_customer), db: Session = Depends(get_db)):
     records = db.scalars(select(CustomerSubmission).join(Feedback, Feedback.id == CustomerSubmission.feedback_id)
         .where(CustomerSubmission.account_id == account.id, CustomerSubmission.stage != 'deleted', Feedback.deleted_at.is_(None))
         .order_by(CustomerSubmission.created_at.desc())).all()
+    records = [item for item in records if customer_can_access(db, account.id, db.get(IntakeLink, item.link_id).project_id)]
     return [{'access_token': item.access_token, 'project_name': db.get(Project, db.get(IntakeLink, item.link_id).project_id).name,
              'reference': item.feedback_id[:8].upper(), 'stage': item.stage,
              'workflow': progress_snapshot(db, db.get(Feedback, item.feedback_id), public=True, history=False) if item.stage == 'submitted' else None} for item in records]
@@ -33,7 +35,7 @@ def projects(account=Depends(require_customer), db: Session = Depends(get_db)):
     rows = db.execute(select(CustomerMembership, Project, IntakeLink)
         .join(Project, Project.id == CustomerMembership.project_id)
         .join(IntakeLink, IntakeLink.id == CustomerMembership.link_id)
-        .where(CustomerMembership.account_id == account.id).order_by(Project.name)).all()
+        .where(CustomerMembership.account_id == account.id, CustomerMembership.revoked_at.is_(None)).order_by(Project.name)).all()
     return [{'id': project.id, 'name': project.name, 'intake_token': link.token if not link.revoked_at else None,
              'closed': bool(link.revoked_at)} for _, project, link in rows]
 
@@ -52,6 +54,8 @@ def claim(data: Capability, request: Request, account=Depends(require_customer),
     item = db.scalar(select(CustomerSubmission).where(CustomerSubmission.access_token == data.token))
     if item is None or item.stage == 'deleted' or (item.account_id and item.account_id != account.id):
         raise HTTPException(404, 'This report is unavailable for your account.')
+    link = db.get(IntakeLink, item.link_id)
+    require_customer_project(request, db, link.project_id)
     # The bearer capability is proof of access to a guest submission; never infer ownership from a name/email.
     changed = db.execute(update(CustomerSubmission).where(
         CustomerSubmission.id == item.id,

@@ -1,3 +1,48 @@
+# Workflow and security audit — 16 October 2026
+
+**191 backend tests passed** in the final full run (50.01 seconds); **46 desktop/mobile browser tests passed** in the final full run (1.6 minutes). Final TypeScript/Vite production build passed, approximately 111 KiB gzipped JavaScript.
+
+Concrete issues reproduced and fixed:
+
+| Finding | Resulting behavior |
+| --- | --- |
+| Copied owner cookie remained valid after logout | Random hashed database sessions are revoked; expiry, rotation and independent-process replay checks pass. |
+| Switching to owner access retained an employee session/identity | Role switches revoke the previous company session and consistently report the active owner/employee. |
+| Known IDs exposed unsent customer drafts to company API routes | All direct company feedback/evidence reads and mutations reject unsent customer drafts. Customer processing and submission still work. |
+| Shared browser caches could recover another actor’s draft | Account transitions/logout clear private caches; cross-tab identity changes are detected on focus before continuing. Existing same-account recovery and guest claims still pass. |
+| Blocked browser storage could crash intake writes | Storage failures are contained; a complete anonymous submission passes with get/set/remove denied on desktop and mobile. |
+| Moving a report retained an assignee outside its destination project | Invalid assignment is released with a public history event and workflow version increment. |
+| Restored customer membership could retain a revoked link | Restoration uses a current active project link when available. |
+| A slow notification batch could reuse cached access/preferences or fail on deleted queued rows | Fresh transaction per message, deletion checks and transient database error containment; recipient removal/opt-out prevents later sends. |
+
+The audit also exercises project/customer isolation, private-note filtering, invitation/reset/verification one-use and expiry, revoked access, origin guards, image type/size/pixel/metadata bounds, storage-path confinement, quota preservation, stale updates and deletion. These are automated application checks, not an independent penetration-test certification or load test.
+
+Dependency advisory checks: `npm audit --json` returned zero advisories across the installed frontend dependency tree. All **29 pinned Python packages** were checked through their current public PyPI release JSON vulnerability records; every request succeeded and no advisories were listed. These results describe the checked sources at audit time, not a guarantee against undisclosed vulnerabilities.
+
+One real synthetic text report was submitted through the local app’s configured provider endpoint. HTTP 200, report schema and evidence quotations validated, and the synthetic report was erased afterward. **One normal quota attempt** was consumed; no customer content was sent by the audit. Vision behavior remains covered by bounded-image and provider-response tests; it was not repeated as a live vision request during this audit. SMTP failure/TLS behavior was tested with local doubles; no real email was sent.
+
+The operator database was backed up to `data/backups/before-security-audit-20261017T061255Z.db` (UTC filename) and upgraded to **0010**. All original columns/rows in the 20 prior data tables matched the backup before smoke testing; SQLite integrity and foreign key checks passed. Existing demo employee/customer logins and permission boundaries passed actual local HTTP checks. The only synthetic report was erased; its minimal usage tombstone remains to preserve the request cap. Existing owner browser cookies must sign in once again because the stateless format is retired.
+
+Current operating limits remain: one company, one local backend process, local test email mode, and explicitly optional email verification. Private projects should use members-only collection; link-based projects deliberately accept guests. Deployment, external email delivery and multi-process operation were not tested or enabled by this audit.
+
+# Project access and notifications — 16 October 2026
+
+- **183 backend checks passed** in the final full regression run (45.86 seconds). New checks cover company project list/direct-route isolation, cross-project writes and assignment, restricted colleague directories, owner-only access controls, members-only customer intake, individual report ownership, membership revocation/restoration, private-note recipient filtering, per-account unread/read-all/read-report operations, current-fix notifications, email opt-in, local outbox contents, pending email cancellation after removal, SMTP failure without lost replies, origin/authentication checks and duplicate submit/no-op suppression.
+- The final full browser regression ran **40 desktop/mobile scenarios: 39 passed**, with one existing mobile sharing flow exposing a startup timing issue. Collect customer feedback is now disabled until projects load; the failed scenario passed its focused rerun (2.8 seconds). All 40 current scenarios have passed across those runs. The new access/notification scenarios pass on both sizes, including mixed read/unread history, owner membership UI, members-only collection, employee inbox isolation, notification report links, automatic read state, email preference/outbox, retesting and removal. No hosted model calls or external email were used.
+- Final TypeScript/Vite production build passed, approximately **110 KiB gzipped JavaScript**. Mobile notification inbox (390 × 844) and project access layouts were visually inspected; no horizontal overflow was found. Screenshots remain ignored under `test-results/`.
+- Development database backed up to `data/backups/before-project-notifications-20261017T051055Z.db` (UTC filename) and migrated to **0009**. Original columns/rows in all 17 prior data tables matched the backup exactly before smoke checks. Existing active employees retained their prior projects, SQLite integrity and foreign key checks passed, both demo logins worked, and employee membership-management requests were denied. A separate upgrade/restart test preserves a pre-existing security email, distinguishes active/disabled legacy employee grants and persists notification preferences/read state across independent processes.
+- Local app restarted on port 8001 with **local test email mode**. Email alerts default off; no real messages were sent. Existing projects retain link-based collection until the owner selects members-only mode. Existing employees retain their earlier projects once; newly invited employees need explicit project grants. This is a single-company local application.
+
+# Conversations, retests and account management — 16 October 2026
+
+- Full backend regression run: **167 passed**. The expanded account/conversation suite then passed **12 checks**, including three additional SMTP/replacement-link checks. Across these runs, all **170 current backend checks** passed. Coverage includes public/private filtering, account ownership, deletion, current-fix concurrency, one-use/expired/replaced links, role isolation, password-reset session revocation, owner-only invitations/outbox/access controls, immediate employee removal and restoration, and mocked mandatory-TLS delivery/failure handling.
+- Desktop/mobile regression run: **36 passed**, with two account recovery return-link failures. After fixing the employee/customer role retained across completion, all **four focused conversation/team browser cases passed** (16.6 seconds), covering both resolutions of retest, private-note exclusion, invitation acceptance through the local outbox, email verification, password recovery, fresh sign-in and access removal. All 38 current browser scenarios have now passed; no external model or mail requests were used.
+- Final TypeScript/Vite production build passed, approximately **108 KiB gzipped JavaScript**. Mobile conversation and desktop team-management screenshots were inspected; screenshots remain ignored under `test-results/`.
+- Development database backed up to `data/backups/before-conversations-accounts-20261017T025314Z.db` (UTC filename) and migrated to **0008**. Counts of existing projects, feedback, customers and employees match the backup; SQLite quick check returned `ok`. Backend restarted on port 8001. Both existing demo logins and frontend availability were verified. Owner team access works; a regular employee receives 403 for the outbox. No real report content or status was changed by the smoke check.
+- **Local email outbox** is enabled. No external emails were sent. Email verification remains optional for account use, with explicit pending status. Owner-only team management and individual employee invitations are now implemented; general report notifications remain outside this phase.
+
+The following sections record historical checkpoints and their limitations at the time.
+
 # Assignment and progress verification — 16 October 2026
 
 - **158 backend checks passed** (19.68 seconds); the 16 workflow-specific checks were rerun after final input validation and passed. Covers safe defaults without GET mutations, employee/company authorization, customer read-only views and minimal public fields, real employee assignments, allowed/invalid transitions, required owner/information notes, stale versions, no-op idempotency, preserved report/evidence versions, deletion of progress/history and independent-process restart persistence.

@@ -4,6 +4,7 @@ const password = "A personal employee phrase 42!";
 
 test("new employee joins with invitation; existing employee signs in from another browser", async ({
   browser,
+  request,
 }, info) => {
   const email = `employee-${crypto.randomUUID()}@example.com`;
   const name = `Alex ${info.project.name}`;
@@ -39,18 +40,32 @@ test("new employee joins with invitation; existing employee signs in from anothe
     "Your passwords don’t match",
   );
   await page.getByLabel("Confirm password", { exact: true }).fill(password);
-  await page
-    .getByRole("button", { name: "Create employee account", exact: true })
-    .click();
-  await expect(page.getByRole("alert")).toContainText(
-    "invitation code is incorrect",
-  );
+  // Exercise the server-side invalid invitation once; all browser cases share a local IP limiter.
+  if (info.project.name === "desktop") {
+    await page
+      .getByRole("button", { name: "Create employee account", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "invitation code is incorrect",
+    );
+  }
   expect((await context.request.get(base + "/api/projects")).status()).toBe(
     401,
   );
+  expect(
+    (
+      await request.post(base + "/api/team/invitations", { data: { email } })
+    ).status(),
+  ).toBe(201);
+  const outbox = await (await request.get(base + "/api/team/outbox")).json();
+  const invitation = outbox.find(
+    (item: { recipient: string; body: string }) =>
+      item.recipient === email && item.body.includes("/invite/"),
+  );
+  const token = invitation.body.match(/invite\/([A-Za-z0-9_-]{43})/)[1];
   await page
     .getByLabel("Workspace invitation code", { exact: true })
-    .fill("e2e-agency-access-code");
+    .fill(token);
   await page
     .getByRole("button", { name: "Create employee account", exact: true })
     .click();

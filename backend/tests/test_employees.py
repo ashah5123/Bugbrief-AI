@@ -63,7 +63,7 @@ def test_employee_registration_validation(client, changes):
 def test_duplicate_employee_cannot_replace_original_credentials(client):
     with TestClient(app) as employee:
         assert employee.post('/api/auth/employee/register', json=registration()).status_code == 201
-        assert employee.post('/api/auth/employee/register', json=registration(name='Other', email='ALEX@example.com', password='Another employee phrase.')).status_code == 409
+        assert employee.post('/api/auth/employee/register', json=registration(name='Other', email='ALEX@example.com', password='Another employee phrase.')).status_code == 403
         with database() as db:
             account = db.scalar(select(EmployeeAccount))
             assert account.name == 'Alex Employee' and password_matches(PASSWORD, account.password_hash)

@@ -25,6 +25,8 @@ def client(tmp_path, monkeypatch):
     app.dependency_overrides[get_db] = db_override
     monkeypatch.setattr(settings, 'agency_access_code', 'test-agency-access-code')
     monkeypatch.setattr(settings, 'agency_code_path', tmp_path / 'owner-code.txt')
+    monkeypatch.setattr(settings, 'mail_mode', 'local')
+    monkeypatch.setattr(settings, 'public_base_url', 'http://127.0.0.1:5173')
     monkeypatch.setattr(settings, 'gemini_api_key', 'test-key-never-sent')
     monkeypatch.setattr(settings, 'free_tier_confirmed', True)
     monkeypatch.setattr(settings, 'ai_daily_limit', 20)

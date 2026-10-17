@@ -17,6 +17,13 @@ test("company assigns and progresses a customer issue; customer sees owner, stat
       data: {},
     })
   ).json();
+  expect(
+    (
+      await request.post(`${api}/projects/${project.id}/members/employee`, {
+        data: { email: "workflow-employee@example.com" },
+      })
+    ).ok(),
+  ).toBe(true);
   const employees = await (await request.get(`${api}/employees`)).json();
   const employee = employees.find(
     (item: { name: string }) => item.name === "Workflow Employee",
@@ -163,6 +170,13 @@ test("progress updates preserve unsaved report edits and reject a stale save", a
       data: { project_id: project.id, text: "A manual checkout issue." },
     })
   ).json();
+  expect(
+    (
+      await request.post(`${api}/projects/${project.id}/members/employee`, {
+        data: { email: "workflow-employee@example.com" },
+      })
+    ).ok(),
+  ).toBe(true);
   const employees = await (await request.get(`${api}/employees`)).json();
   const employee = employees.find(
     (item: { name: string }) => item.name === "Workflow Employee",

@@ -1,3 +1,5 @@
+import { browserStorage, clearCompanyDrafts } from "./browserStorage";
+import NotificationBell from "./NotificationBell";
 import {
   useEffect,
   useContext,
@@ -40,6 +42,7 @@ import EvidencePanel from "./EvidencePanel";
 import ShareProject from "./ShareProject";
 import CustomerContext from "./CustomerContext";
 import DeleteReportButton from "./DeleteReportButton";
+import { VerificationBanner } from "./AccountSecurity";
 import WorkflowPanel, { WorkflowBadge, workflowLabels } from "./WorkflowPanel";
 import { EmployeeContext } from "./AgencyGate";
 import {
@@ -74,7 +77,7 @@ function readDraft(): Draft {
   try {
     return {
       ...emptyDraft,
-      ...JSON.parse(localStorage.getItem("bugbrief-draft") || "{}"),
+      ...JSON.parse(browserStorage.getItem("bugbrief-draft") || "{}"),
     };
   } catch {
     return emptyDraft;
@@ -160,7 +163,7 @@ export default function App() {
   const employee = useContext(EmployeeContext);
   const userInitial = employee?.name.slice(0, 1).toUpperCase() || "W";
   const [manualOpen, setManualOpen] = useState(() =>
-    Boolean(localStorage.getItem("bugbrief-active-id")),
+    Boolean(browserStorage.getItem("bugbrief-active-id")),
   );
   const [sharing, setSharing] = useState<string | null>(null);
   const [view, setView] = useState<View>("overview");
@@ -172,7 +175,7 @@ export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [draft, setDraft] = useState<Draft>(readDraft);
   const [activeId, setActiveId] = useState<string | null>(() =>
-    localStorage.getItem("bugbrief-active-id"),
+    browserStorage.getItem("bugbrief-active-id"),
   );
   const [projectFilter, setProjectFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -232,6 +235,18 @@ export default function App() {
   }, [modal, !!selected]);
 
   async function refresh() {
+    const identity = await api<{
+      authenticated: boolean;
+      employee?: { id: string };
+    }>("/auth/session");
+    if (
+      !identity.authenticated ||
+      (identity.employee?.id || "owner") !== (employee?.id || "owner")
+    ) {
+      clearCompanyDrafts();
+      location.assign("/workspace");
+      return;
+    }
     const [p, f, h, e] = await Promise.all([
       api<Project[]>("/projects"),
       api<Feedback[]>("/feedback"),
@@ -242,8 +257,23 @@ export default function App() {
     setItems(f);
     setHealth(h);
     setEmployees(e);
+    for (const key of browserStorage.keys()) {
+      if (
+        key.startsWith("bugbrief-report-") &&
+        !f.some((item) => key === `bugbrief-report-${item.id}`)
+      )
+        browserStorage.removeItem(key);
+    }
+    setSelected((previous) =>
+      previous && !f.some((item) => item.id === previous.id) ? null : previous,
+    );
+    setActiveId((previous) =>
+      previous && !f.some((item) => item.id === previous) ? null : previous,
+    );
     setDraft((d) =>
-      d.project_id || !p.length ? d : { ...d, project_id: p[0].id },
+      p.some((project) => project.id === d.project_id)
+        ? d
+        : { ...emptyDraft, project_id: p[0]?.id || "" },
     );
   }
   useEffect(() => {
@@ -252,11 +282,11 @@ export default function App() {
       .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
-    localStorage.setItem("bugbrief-draft", JSON.stringify(draft));
+    browserStorage.setItem("bugbrief-draft", JSON.stringify(draft));
   }, [draft]);
   useEffect(() => {
-    if (activeId) localStorage.setItem("bugbrief-active-id", activeId);
-    else localStorage.removeItem("bugbrief-active-id");
+    if (activeId) browserStorage.setItem("bugbrief-active-id", activeId);
+    else browserStorage.removeItem("bugbrief-active-id");
   }, [activeId]);
   useEffect(() => {
     if (notice) {
@@ -268,7 +298,7 @@ export default function App() {
     if (!selected) return;
     const key = `bugbrief-report-${selected.id}`;
     try {
-      const saved = JSON.parse(localStorage.getItem(key) || "null");
+      const saved = JSON.parse(browserStorage.getItem(key) || "null");
       setEditReport(
         saved?.version === selected.version ? saved.report : selected.report,
       );
@@ -278,7 +308,7 @@ export default function App() {
   }, [selected]);
   useEffect(() => {
     if (selected && editReport)
-      localStorage.setItem(
+      browserStorage.setItem(
         `bugbrief-report-${selected.id}`,
         JSON.stringify({ version: selected.version, report: editReport }),
       );
@@ -313,9 +343,11 @@ export default function App() {
     };
     const interval = setInterval(reload, 15000);
     document.addEventListener("visibilitychange", reload);
+    window.addEventListener("focus", reload);
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", reload);
+      window.removeEventListener("focus", reload);
     };
   }, []);
   const reports = items.filter((i) => i.report);
@@ -386,7 +418,7 @@ export default function App() {
   }
   async function deleteReport(item: Feedback) {
     await api(`/feedback/${item.id}`, "DELETE");
-    localStorage.removeItem(`bugbrief-report-${item.id}`);
+    browserStorage.removeItem(`bugbrief-report-${item.id}`);
     if (selected?.id === item.id) setSelected(null);
     if (activeId === item.id) {
       setActiveId(null);
@@ -472,7 +504,7 @@ export default function App() {
         { version: selected.version, report: editReport },
       );
       setSelected(result);
-      localStorage.removeItem(`bugbrief-report-${selected.id}`);
+      browserStorage.removeItem(`bugbrief-report-${selected.id}`);
       await refresh();
       setNotice("Report saved.");
     } catch (e) {
@@ -498,6 +530,18 @@ export default function App() {
       navigate("feedback");
     }
   }
+  const openedAlert = useRef(false);
+  useEffect(() => {
+    const report = new URLSearchParams(location.search).get("report");
+    if (!report || loading || openedAlert.current) return;
+    openedAlert.current = true;
+    const item = items.find((value) => value.id === report);
+    if (item) openItem(item);
+    else
+      setError(
+        "This report is unavailable or your project access has been removed.",
+      );
+  }, [loading, items]);
   function share(id?: string) {
     if (!projects.length) {
       setModal("project");
@@ -514,6 +558,8 @@ export default function App() {
   const projectName = (id: string) =>
     projects.find((p) => p.id === id)?.name || "Project";
 
+  if (loading)
+    return <div className="access-loading">Checking workspace access…</div>;
   return (
     <div className="app-shell">
       {mobileNav && (
@@ -603,6 +649,10 @@ export default function App() {
           )}
         </div>
         <div className="sidebar-bottom">
+          <a className="nav-item" href="/workspace/team">
+            <ArrowRight size={18} />
+            <span>Team & account</span>
+          </a>
           <a className="nav-item" href="/workspace?employee=choose">
             <ArrowRight size={18} />
             <span>Employee accounts</span>
@@ -665,6 +715,7 @@ export default function App() {
             </strong>
           </div>
           <div className="topbar-right">
+            <NotificationBell audience="company" />
             <span className="local-badge">
               <span /> Local workspace
             </span>
@@ -680,6 +731,7 @@ export default function App() {
               onClick={async () => {
                 try {
                   await api("/auth/logout", "POST", {});
+                  clearCompanyDrafts();
                   location.assign("/workspace");
                 } catch (e) {
                   setError((e as Error).message);
@@ -698,6 +750,12 @@ export default function App() {
           </div>
         </header>
         <main>
+          {employee && (
+            <VerificationBanner
+              scope="employee"
+              verified={employee.email_verified}
+            />
+          )}
           <div className="page-heading">
             <div>
               <div className="eyebrow">
@@ -781,7 +839,11 @@ export default function App() {
                 </div>
               </div>
               <div className="collection-actions">
-                <button className="primary-button" onClick={() => share()}>
+                <button
+                  className="primary-button"
+                  disabled={loading}
+                  onClick={() => share()}
+                >
                   <Link2 size={16} />
                   Collect customer feedback
                   <ArrowRight size={15} />
@@ -1013,7 +1075,11 @@ export default function App() {
                       key={activeFeedback.id}
                       feedbackId={activeFeedback.id}
                       workflow={activeFeedback.workflow}
-                      employees={employees}
+                      employees={employees.filter((employee) =>
+                        employee.project_ids.includes(
+                          activeFeedback.project_id,
+                        ),
+                      )}
                       onChange={(value) =>
                         updateWorkflow(activeFeedback.id, value)
                       }
@@ -1680,7 +1746,9 @@ export default function App() {
                 key={selected.id}
                 feedbackId={selected.id}
                 workflow={selected.workflow}
-                employees={employees}
+                employees={employees.filter((employee) =>
+                  employee.project_ids.includes(selected.project_id),
+                )}
                 onChange={(value) => updateWorkflow(selected.id, value)}
               />
               {selected.proposal && (

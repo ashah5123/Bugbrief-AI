@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, func
 from app.main import app
 from app.db import get_db
-from app.models import EmployeeAccount, CustomerAccount, IssueEvent, IssueProgress, Feedback
+from app.models import EmployeeAccount, CustomerAccount, IssueEvent, IssueProgress, Feedback, Project, EmployeeProject
 from app.customer_auth import password_hash
 
 
@@ -17,7 +17,10 @@ def database():
 def employee(client):
     with database() as db:
         row = EmployeeAccount(name='Assigned Employee', email='assigned@example.com', password_hash='unused-test-hash')
-        db.add(row); db.commit()
+        db.add(row); db.flush()
+        for project_id in db.scalars(select(Project.id)).all():
+            db.add(EmployeeProject(employee_id=row.id, project_id=project_id))
+        db.commit()
         return row.id
 
 
@@ -54,7 +57,7 @@ def test_workflow_and_employee_directory_require_company_access(client, draft, e
         outsider.post('/api/customer/register', json={'name': 'Customer', 'email': 'c@example.com', 'password': 'A customer password phrase.'})
         assert outsider.get('/api/employees').status_code == 401
         assert patch(outsider, draft['id'], employee=employee).status_code == 401
-    assert client.get('/api/employees').json() == [{'id': employee, 'name': 'Assigned Employee'}]
+    assert client.get('/api/employees').json() == [{'id': employee, 'name': 'Assigned Employee', 'project_ids': [draft['project_id']]}]
 
 
 def test_assign_progress_and_reopen_without_altering_report_version(client, draft, employee, report_data):
@@ -132,7 +135,7 @@ def test_pending_customer_drafts_cannot_be_tracked_by_company(client):
     assert record['workflow'] is None
     with database() as db:
         feedback_id = db.scalar(select(Feedback.id))
-    assert patch(client, feedback_id).status_code == 409
+    assert patch(client, feedback_id).status_code == 404
 
 
 def test_report_edit_and_progress_update_do_not_clobber_each_other(client, draft, employee, report_data):

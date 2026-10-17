@@ -14,9 +14,15 @@ import {
   LogIn,
   UserPlus,
 } from "lucide-react";
+import { activateCompany, clearCompanyDrafts } from "./browserStorage";
 import { api } from "./types";
 
-export type Employee = { id: string; name: string; email: string };
+export type Employee = {
+  id: string;
+  name: string;
+  email: string;
+  email_verified: boolean;
+};
 export const EmployeeContext = createContext<Employee | null>(null);
 export default function AgencyGate({
   children,
@@ -33,12 +39,18 @@ export default function AgencyGate({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(
+    location.hash.startsWith("#employee/invite/")
+      ? location.hash.split("/")[2]
+      : "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     api<{ authenticated: boolean; employee?: Employee }>("/auth/session")
       .then((data) => {
+        if (data.authenticated) activateCompany(data.employee?.id || "owner");
+        else clearCompanyDrafts();
         setAuthenticated(data.authenticated);
         setEmployee(data.employee || null);
       })
@@ -158,8 +170,8 @@ export default function AgencyGate({
           <div className="employee-team-note">
             <Building2 size={17} />
             <p>
-              Employee accounts share this company’s workspace. Customer
-              accounts have their own portal.
+              Employees see the projects assigned to them. Customer accounts
+              have their own portal.
             </p>
           </div>
           <details className="owner-access">
@@ -195,8 +207,8 @@ export default function AgencyGate({
             </form>
             <small>
               Local setup: the workspace owner’s code is in{" "}
-              <code>data/agency-access.txt</code>. Share it only with employees
-              you want to invite.
+              <code>data/agency-access.txt</code>. Keep this owner code private.
+              Invite employees from the Team page.
             </small>
           </details>
           {error && (
@@ -293,7 +305,8 @@ export default function AgencyGate({
                   />
                 </label>
                 <small>
-                  Ask your workspace owner for this code. Customer project
+                  Use the code from your personal invitation link. The owner
+                  code can create the first employee account. Customer project
                   invitations won’t grant employee access.
                 </small>
               </>
@@ -314,6 +327,11 @@ export default function AgencyGate({
                 : "Sign in to workspace"}
             </button>
           </form>
+          {mode === "signin" && (
+            <p className="auth-alternative">
+              <a href="/account?role=employee">Forgot password?</a>
+            </p>
+          )}
           <p className="auth-alternative">
             {mode === "signup"
               ? "Already joined the team?"

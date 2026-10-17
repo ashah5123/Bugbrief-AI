@@ -21,11 +21,28 @@ from .customer_auth import router as customer_auth_router
 from .customer_routes import router as customer_router
 from .employee_auth import router as employee_router
 from .workflow import router as workflow_router
+from .conversation import router as conversation_router
+from .account_management import router as account_management_router
+from .project_access import router as access_router, company_project_ids, require_company_project
+from .employee_auth import current_employee
+from .models import EmployeeProject, EmployeeAccount, IssueProgress, IssueEvent
+from .notifications import router as notification_router, deliver_pending
 
 @asynccontextmanager
 async def lifespan(app):
     access_code()
-    yield
+    async def mail_worker():
+        while True:
+            await asyncio.to_thread(deliver_pending, app.state.session_factory)
+            await asyncio.sleep(30)
+    worker = asyncio.create_task(mail_worker())
+    try:
+        yield
+    finally:
+        worker.cancel()
+        from contextlib import suppress
+        with suppress(asyncio.CancelledError):
+            await worker
 
 app = FastAPI(title='BugBrief AI', version='0.3.0', lifespan=lifespan)
 app.state.generator = GeminiGenerator(settings)
@@ -41,11 +58,31 @@ app.include_router(customer_auth_router)
 app.include_router(customer_router)
 app.include_router(employee_router)
 app.include_router(workflow_router)
+app.include_router(conversation_router)
+app.include_router(account_management_router)
+app.include_router(access_router)
+app.include_router(notification_router)
 
 @app.middleware('http')
 async def local_write_guard(request: Request, call_next):
     if request.url.path.startswith('/api/') and not request.url.path.startswith(('/api/public/', '/api/auth/', '/api/customer/')) and request.url.path not in ('/api/health',) and not agency_allowed(request):
         return JSONResponse({'detail': 'Agency sign-in required'}, status_code=401)
+    target = re.match(r'^/api/(projects|feedback)/([^/]+)(?:/|$)', request.url.path)
+    if target:
+        with request.app.state.session_factory() as db:
+            project_id = target[2] if target[1] == 'projects' else None
+            if target[1] == 'feedback':
+                item = db.get(Feedback, target[2])
+                if item:
+                    pending = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
+                    if pending and pending.stage != 'submitted':
+                        return JSONResponse({'detail': 'Feedback not found'}, status_code=404)
+                    project_id = item.project_id
+            if project_id:
+                try:
+                    require_company_project(request, db, project_id)
+                except HTTPException as error:
+                    return JSONResponse({'detail': error.detail}, status_code=error.status_code)
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
         origin = request.headers.get('origin')
         if origin and origin not in ('http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8001', 'http://localhost:8001', 'http://127.0.0.1:15173'):
@@ -75,13 +112,21 @@ def health(request: Request, db: Session = Depends(get_db)):
             'busy': app.state.job_lock.locked(), 'usage': usage(db)}
 
 @app.get('/api/projects')
-def projects(db: Session = Depends(get_db)):
-    return [serialize(p) for p in db.scalars(select(Project).order_by(Project.created_at)).all()]
+def projects(request: Request, db: Session = Depends(get_db)):
+    ids = company_project_ids(request, db)
+    query = select(Project).order_by(Project.created_at)
+    if ids is not None:
+        query = query.where(Project.id.in_(ids))
+    return [serialize(p) for p in db.scalars(query).all()]
 
 @app.post('/api/projects', status_code=201)
-async def create_project(data: ProjectIn, db: Session = Depends(get_db)):
+async def create_project(data: ProjectIn, request: Request, db: Session = Depends(get_db)):
     project = Project(**data.model_dump())
     db.add(project)
+    db.flush()
+    employee = current_employee(request, db)
+    if employee:
+        db.add(EmployeeProject(employee_id=employee.id, project_id=project.id))
     db.commit()
     return serialize(project)
 
@@ -95,8 +140,11 @@ async def edit_project(project_id: str, data: ProjectIn, db: Session = Depends(g
     return serialize(project)
 
 @app.get('/api/feedback')
-def feedback_list(db: Session = Depends(get_db)):
+def feedback_list(request: Request, db: Session = Depends(get_db)):
     query = select(Feedback).outerjoin(CustomerSubmission, CustomerSubmission.feedback_id == Feedback.id).where(Feedback.deleted_at.is_(None), (CustomerSubmission.id.is_(None)) | (CustomerSubmission.stage == 'submitted')).order_by(Feedback.updated_at.desc())
+    ids = company_project_ids(request, db)
+    if ids is not None:
+        query = query.where(Feedback.project_id.in_(ids))
     return [serialize(f, db) for f in db.scalars(query).all()]
 
 @app.delete('/api/feedback/{feedback_id}')
@@ -104,7 +152,8 @@ async def delete_feedback(feedback_id: str, request: Request, db: Session = Depe
     return erase_feedback(db, request.app, get_feedback(db, feedback_id))
 
 @app.post('/api/feedback', status_code=201)
-async def create_feedback(data: FeedbackIn, db: Session = Depends(get_db)):
+async def create_feedback(data: FeedbackIn, request: Request, db: Session = Depends(get_db)):
+    require_company_project(request, db, data.project_id)
     if not db.get(Project, data.project_id):
         raise HTTPException(404, 'Project not found')
     feedback = Feedback(**data.model_dump())
@@ -113,14 +162,24 @@ async def create_feedback(data: FeedbackIn, db: Session = Depends(get_db)):
     return serialize(feedback, db)
 
 @app.put('/api/feedback/{feedback_id}')
-async def edit_feedback(feedback_id: str, data: FeedbackIn, db: Session = Depends(get_db)):
+async def edit_feedback(feedback_id: str, data: FeedbackIn, request: Request, db: Session = Depends(get_db)):
     item = get_feedback(db, feedback_id)
     ensure_idle(app, feedback_id)
     customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
     if customer and any(getattr(item, key) != value for key, value in data.model_dump().items()):
         raise HTTPException(409, 'Original customer feedback is preserved. Add a clarification or edit the report instead.')
+    require_company_project(request, db, data.project_id)
     if not db.get(Project, data.project_id):
         raise HTTPException(404, 'Project not found')
+    if item.project_id != data.project_id:
+        progress = db.get(IssueProgress, item.id)
+        if progress and progress.assigned_employee_id:
+            employee = db.get(EmployeeAccount, progress.assigned_employee_id)
+            if not employee or employee.disabled_at or not db.get(EmployeeProject, (employee.id, data.project_id)):
+                progress.assigned_employee_id = None
+                progress.version += 1
+                progress.updated_at = now()
+                db.add(IssueEvent(feedback_id=item.id, label='Assignment removed', note='The report moved to another project. The team will assign an employee from that project.'))
     for key, value in data.model_dump().items():
         setattr(item, key, value)
     evidence_changed(item)

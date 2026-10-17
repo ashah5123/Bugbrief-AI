@@ -158,15 +158,15 @@ def test_follow_up_answers_and_proposal_preserve_manual_report(client,anonymous,
     double=ReportDouble(report_data);app.state.generator=double
     first=anonymous.post(f'/api/public/submissions/{token}/process',json={'consent':True}).json()
     assert first['questions']==report_data['questions']
-    # Agency access can inspect by ID; ordinary pending drafts remain out of the inbox.
+    # Seed a legacy manual report; pending customer drafts now reject all company API access.
     from app.db import get_db
     from app.models import Feedback
     db=next(app.dependency_overrides[get_db]())
     feedback=db.query(Feedback).first();feedback_id=feedback.id
-    db.close()
-    stored=client.get(f'/api/feedback/{feedback_id}').json()
     manual={**report_data,'title':'Preserve agency manual edits'}
-    assert client.put(f'/api/feedback/{feedback_id}/report',json={'version':stored['version'],'report':manual}).status_code==200
+    feedback.report=manual
+    db.commit();db.close()
+    assert client.get(f'/api/feedback/{feedback_id}').status_code==404
     answer={'question':report_data['questions'][0],'answer':'Chrome on Android'}
     saved=anonymous.post(f'/api/public/submissions/{token}/answers',json={'answers':[answer]}).json()
     assert len(saved['answers'])==1 and saved['questions']==[]
@@ -176,6 +176,7 @@ def test_follow_up_answers_and_proposal_preserve_manual_report(client,anonymous,
     app.state.generator=ReportDouble(revised)
     second=anonymous.post(f'/api/public/submissions/{token}/process',json={'consent':True}).json()
     assert second['stage']=='ready'
+    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={}).status_code==200
     owner=client.get(f'/api/feedback/{feedback_id}').json()
     assert owner['report']['title']==manual['title'] and owner['proposal']['title']==report_data['title']
     assert any(key.startswith('clarification:') for key in app.state.generator.evidence[0])

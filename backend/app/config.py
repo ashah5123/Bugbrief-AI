@@ -8,6 +8,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ROOT / 'backend' / '.env', extra='ignore')
     database_url: str = f"sqlite:///{ROOT / 'data' / 'bugbrief.db'}"
     attachments_dir: Path = ROOT / 'data' / 'attachments'
+    public_base_url: str = 'http://127.0.0.1:5173'
+    mail_mode: str = 'local'
+    smtp_host: str = ''
+    smtp_port: int = 587
+    smtp_username: str = ''
+    smtp_password: str = ''
+    smtp_from: str = ''
     agency_access_code: str = ''
     agency_code_path: Path = ROOT / 'data' / 'agency-access.txt'
     public_ai_daily_limit: int = Field(default=6, ge=1, le=20)

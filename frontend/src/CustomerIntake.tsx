@@ -17,6 +17,9 @@ import {
 } from "lucide-react";
 import ScreenshotReview from "./ScreenshotReview";
 import { api, type IssueWorkflow } from "./types";
+import { activateCustomer, browserStorage } from "./browserStorage";
+import NotificationBell from "./NotificationBell";
+import Conversation from "./Conversation";
 import { CustomerProgress } from "./WorkflowPanel";
 import DeleteReportButton from "./DeleteReportButton";
 import { rememberSubmission, forgetSubmission } from "./customerStorage";
@@ -113,15 +116,29 @@ export default function CustomerIntake({
   const [copied, setCopied] = useState(false);
   const [deleted, setDeleted] = useState(false);
   const [signedIn, setSignedIn] = useState(false);
-  useEffect(() => {
-    api<{ authenticated: boolean }>("/customer/session")
-      .then((value) => setSignedIn(value.authenticated))
-      .catch(() => {});
-  }, []);
   const nonce = useRef(crypto.randomUUID());
   const signature = useRef("");
   const initialized = useRef(false);
+  const accountIdentity = useRef<string | null>(null);
   const storageKey = `bugbrief-customer-${intakeToken || resumeToken}`;
+  useEffect(() => {
+    const checkAccount = () => {
+      if (accountIdentity.current === null) return;
+      api<{ customer?: { id: string } }>("/customer/session")
+        .then((value) => {
+          const identity = value.customer?.id || "guest";
+          if (identity !== accountIdentity.current) {
+            initialized.current = false;
+            activateCustomer(identity);
+            location.reload();
+          }
+        })
+        .catch(() => {});
+    };
+    window.addEventListener("focus", checkAccount);
+    return () => window.removeEventListener("focus", checkAccount);
+  }, []);
+
   function adopt(value: Record, restore = false) {
     rememberSubmission(value);
     setRecord(value);
@@ -159,9 +176,17 @@ export default function CustomerIntake({
     let cancelled = false;
     async function initialize() {
       try {
+        const session = await api<{
+          authenticated: boolean;
+          customer?: { id: string };
+        }>("/customer/session");
+        if (cancelled) return;
+        accountIdentity.current = session.customer?.id || "guest";
+        activateCustomer(accountIdentity.current);
+        setSignedIn(session.authenticated);
         let saved: any = null;
         try {
-          saved = JSON.parse(localStorage.getItem(storageKey) || "null");
+          saved = JSON.parse(browserStorage.getItem(storageKey) || "null");
         } catch {}
         if (saved?.nonce) nonce.current = saved.nonce;
         if (saved?.answers) setAnswers(saved.answers);
@@ -212,9 +237,9 @@ export default function CustomerIntake({
       answers,
       step,
     });
-    localStorage.setItem(storageKey, value);
+    browserStorage.setItem(storageKey, value);
     if (record)
-      localStorage.setItem(`bugbrief-customer-${record.access_token}`, value);
+      browserStorage.setItem(`bugbrief-customer-${record.access_token}`, value);
   }, [
     record,
     text,
@@ -306,7 +331,17 @@ export default function CustomerIntake({
     const refresh = () =>
       api<Record>(`/public/submissions/${record.access_token}`)
         .then((value) => adopt(value))
-        .catch((e) => setError(e.message));
+        .catch((e) => {
+          setError(e.message);
+          if ([401, 403, 404].includes(e.status)) {
+            initialized.current = false;
+            setText("");
+            setName("");
+            setAnswers({});
+            setRecord(null);
+            setConfig(null);
+          }
+        });
     const timer = setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
     return () => {
@@ -359,7 +394,7 @@ export default function CustomerIntake({
     }
     adopt(value);
     signature.current = current;
-    localStorage.setItem(
+    browserStorage.setItem(
       storageKey,
       JSON.stringify({
         nonce: nonce.current,
@@ -462,7 +497,7 @@ export default function CustomerIntake({
     });
   }
   function fresh() {
-    localStorage.removeItem(storageKey);
+    browserStorage.removeItem(storageKey);
     location.assign(
       `/c/${record?.intake_token || intakeToken}${embedded ? "?embedded=1" : ""}`,
     );
@@ -496,15 +531,17 @@ export default function CustomerIntake({
       <div className="customer-unavailable">
         <ShieldCheck size={29} />
         <h1>
-          {resumeToken && error.includes("Sign in to")
+          {(resumeToken || intakeToken) && error.includes("Sign in")
             ? "Sign in to view your report."
             : "This feedback link is unavailable."}
         </h1>
         <p>{error || "Ask the agency for a new project link."}</p>
-        {resumeToken && error.includes("Sign in to") && (
+        {(resumeToken || intakeToken) && error.includes("Sign in") && (
           <a
             className="primary-button"
-            href={`/customer/signin?next=${encodeURIComponent(`/s/${resumeToken}`)}`}
+            href={`/customer/signin?next=${encodeURIComponent(resumeToken ? `/s/${resumeToken}` : `/c/${intakeToken}`)}`}
+            target={embedded ? "_blank" : undefined}
+            rel="noreferrer"
           >
             Customer sign in
           </a>
@@ -528,6 +565,7 @@ export default function CustomerIntake({
           <LockKeyhole size={12} />
           Private project feedback
         </span>
+        {signedIn && <NotificationBell audience="customer" />}
         {!embedded && (
           <a className="portal-back" href="/customer">
             Your reports / switch role
@@ -994,7 +1032,21 @@ export default function CustomerIntake({
               <strong>BB-{record.reference}</strong>
               <small>{record.project_name}</small>
             </div>
-            {record.workflow && <CustomerProgress workflow={record.workflow} />}
+            {record.workflow && (
+              <CustomerProgress
+                workflow={record.workflow}
+                token={record.access_token}
+                onChange={(workflow) =>
+                  setRecord((previous) =>
+                    previous ? { ...previous, workflow } : previous,
+                  )
+                }
+              />
+            )}
+            <Conversation
+              key={record.access_token}
+              token={record.access_token}
+            />
             <div className="receipt-next">
               <span>01</span>
               <p>The agency reviews the details and any remaining unknowns.</p>
@@ -1089,7 +1141,7 @@ export default function CustomerIntake({
                   "DELETE",
                 );
                 forgetSubmission(record.access_token);
-                localStorage.removeItem(storageKey);
+                browserStorage.removeItem(storageKey);
                 setDeleted(true);
               }}
             />

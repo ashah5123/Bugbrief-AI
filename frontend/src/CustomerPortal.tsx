@@ -1,4 +1,6 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { activateCustomer, clearCustomerDrafts } from "./browserStorage";
+import NotificationBell from "./NotificationBell";
+import { useEffect, useState, useRef, type FormEvent } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -11,6 +13,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { api } from "./types";
+import { VerificationBanner } from "./AccountSecurity";
 import DeleteReportButton from "./DeleteReportButton";
 import { WorkflowBadge } from "./WorkflowPanel";
 import {
@@ -19,7 +22,12 @@ import {
   type SavedSubmission,
 } from "./customerStorage";
 
-type Customer = { id: string; name: string; email: string };
+type Customer = {
+  id: string;
+  name: string;
+  email: string;
+  email_verified: boolean;
+};
 type Session = { authenticated: boolean; customer?: Customer };
 type CustomerProject = {
   id: string;
@@ -33,6 +41,7 @@ function Header() {
       <a className="welcome-brand" href="/">
         b<span>✳</span> bugbrief
       </a>
+      <NotificationBell audience="customer" />
       <a className="portal-back" href="/">
         <ArrowLeft size={14} />
         Switch role
@@ -126,6 +135,7 @@ export default function CustomerPortal({
   mode?: "home" | "signup" | "signin";
 }) {
   const [session, setSession] = useState<Session | null>(null);
+  const accountIdentity = useRef<string | null>(null);
   const [items, setItems] = useState<SavedSubmission[]>([]);
   const [projects, setProjects] = useState<CustomerProject[]>([]);
   const [legacy, setLegacy] = useState(savedSubmissions);
@@ -138,6 +148,15 @@ export default function CustomerPortal({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   async function refresh() {
+    const identity = await api<Session>("/customer/session");
+    if (
+      !identity.authenticated ||
+      identity.customer?.id !== accountIdentity.current
+    ) {
+      activateCustomer(identity.customer?.id || "guest");
+      location.reload();
+      return;
+    }
     const [reports, connected] = await Promise.all([
       api<SavedSubmission[]>("/customer/reports"),
       api<CustomerProject[]>("/customer/projects"),
@@ -148,6 +167,9 @@ export default function CustomerPortal({
   useEffect(() => {
     api<Session>("/customer/session")
       .then(async (value) => {
+        accountIdentity.current = value.customer?.id || "guest";
+        activateCustomer(accountIdentity.current);
+        setLegacy(savedSubmissions());
         if (
           value.authenticated &&
           mode !== "home" &&
@@ -189,11 +211,12 @@ export default function CustomerPortal({
     }
     setBusy(true);
     try {
-      await api<Session>(
+      const loggedIn = await api<Session>(
         mode === "signup" ? "/customer/register" : "/customer/login",
         "POST",
         { email, password, ...(mode === "signup" ? { name } : {}) },
       );
+      activateCustomer(loggedIn.customer!.id);
       const next = returnPath();
       if (next.startsWith("/s/")) {
         const token = next.split("/")[2];
@@ -318,6 +341,11 @@ export default function CustomerPortal({
               {mode === "signup" ? "Create customer account" : "Sign in"}
             </button>
           </form>
+          {mode === "signin" && (
+            <p className="auth-alternative">
+              <a href="/account?role=customer">Forgot password?</a>
+            </p>
+          )}
           <p className="auth-alternative">
             {mode === "signup" ? "Already have an account?" : "New here?"}{" "}
             <a
@@ -404,6 +432,10 @@ export default function CustomerPortal({
             <span className="eyebrow">YOUR CUSTOMER ACCOUNT</span>
             <h1>Hello, {session.customer!.name}.</h1>
             <p>{session.customer!.email}</p>
+            <VerificationBanner
+              scope="customer"
+              verified={session.customer!.email_verified}
+            />
           </div>
           <button
             className="secondary-button"
@@ -413,12 +445,7 @@ export default function CustomerPortal({
               setError("");
               try {
                 await api("/customer/logout", "POST");
-                for (const key of Object.keys(localStorage))
-                  if (
-                    key.startsWith("bugbrief-customer-") ||
-                    key === "bugbrief-my-submissions"
-                  )
-                    localStorage.removeItem(key);
+                clearCustomerDrafts();
                 location.assign("/customer");
               } catch (e) {
                 setError((e as Error).message);

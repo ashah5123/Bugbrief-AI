@@ -1,12 +1,12 @@
 """Issue progress is independent of report generation and evidence versions."""
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import Field
 from sqlalchemy import select, update, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import get_db
-from .models import Feedback, CustomerSubmission, EmployeeAccount, IssueProgress, IssueEvent, now
+from .models import Feedback, CustomerSubmission, EmployeeAccount, EmployeeProject, IssueProgress, IssueEvent, now
 from .schemas import StrictModel
 
 router = APIRouter()
@@ -31,6 +31,8 @@ def progress_snapshot(db, feedback, public=False, history=True):
     value = {'status': status, 'label': LABELS[status],
              'assigned_to': {'name': employee.name} if employee else None,
              'updated_at': progress.updated_at if progress else received_at(db, feedback)}
+    if public and status == 'ready_to_retest':
+        value['retest_version'] = progress.version
     if not public:
         value.update(version=progress.version if progress else 0,
                      assigned_employee_id=progress.assigned_employee_id if progress else None)
@@ -63,9 +65,16 @@ class ProgressUpdate(StrictModel):
 
 
 @router.get('/api/employees')
-def employees(db: Session = Depends(get_db)):
-    return [{'id': employee.id, 'name': employee.name} for employee in db.scalars(
-        select(EmployeeAccount).order_by(EmployeeAccount.name, EmployeeAccount.id)).all()]
+def employees(request: Request, db: Session = Depends(get_db)):
+    from .project_access import company_project_ids
+    ids = company_project_ids(request, db)
+    query = select(EmployeeAccount).where(EmployeeAccount.disabled_at.is_(None))
+    if ids is not None:
+        query = query.where(EmployeeAccount.id.in_(select(EmployeeProject.employee_id).where(EmployeeProject.project_id.in_(ids))))
+    return [{'id': employee.id, 'name': employee.name,
+             'project_ids': [project_id for project_id in db.scalars(select(EmployeeProject.project_id).where(EmployeeProject.employee_id == employee.id)).all()
+                             if ids is None or project_id in ids]}
+            for employee in db.scalars(query.order_by(EmployeeAccount.name, EmployeeAccount.id)).all()]
 
 
 @router.get('/api/feedback/{feedback_id}/workflow')
@@ -74,7 +83,7 @@ def get_progress(feedback_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch('/api/feedback/{feedback_id}/workflow')
-async def update_progress(feedback_id: str, data: ProgressUpdate, db: Session = Depends(get_db)):
+async def update_progress(feedback_id: str, data: ProgressUpdate, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     feedback = visible_feedback(db, feedback_id)
     current = db.get(IssueProgress, feedback_id)
     version = current.version if current else 0
@@ -85,8 +94,10 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, db: Session = 
     if data.status != previous and data.status not in TRANSITIONS[previous]:
         raise HTTPException(422, f'Cannot move directly from {LABELS[previous]} to {LABELS[data.status]}.')
     employee = db.get(EmployeeAccount, data.assigned_employee_id) if data.assigned_employee_id else None
-    if data.assigned_employee_id and employee is None:
+    if data.assigned_employee_id and (employee is None or employee.disabled_at):
         raise HTTPException(422, 'Choose an employee from this workspace.')
+    if employee and db.get(EmployeeProject, (employee.id, feedback.project_id)) is None:
+        raise HTTPException(422, 'Assign an employee who belongs to this project. The workspace owner can add them under project access.')
     if data.status in ('in_progress', 'ready_to_retest', 'resolved') and employee is None:
         raise HTTPException(422, 'Assign an employee before work starts or a report is resolved.')
     note = data.note.strip()
@@ -113,7 +124,17 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, db: Session = 
         if previous_employee != data.assigned_employee_id:
             parts.append('Assigned to ' + employee.name if employee else 'Assignment removed')
         db.add(IssueEvent(feedback_id=feedback_id, label=' · '.join(parts) or 'Update from the company', note=note, created_at=stamp))
+        from .notifications import emit, add_alert, deliver_pending
+        if data.status != previous or note:
+            emit(db, request, feedback, 'retest_requested' if data.status == 'ready_to_retest' else 'progress_update',
+                 'A fix is ready to retest' if data.status == 'ready_to_retest' else 'Report progress updated', customer=True)
+        if employee and previous_employee != employee.id:
+            from .employee_auth import current_employee
+            actor = current_employee(request, db)
+            if actor is None or actor.id != employee.id:
+                add_alert(db, feedback, 'employee', employee.id, 'assigned', 'An issue was assigned to you')
         db.commit()
+        background_tasks.add_task(deliver_pending, request.app.state.session_factory)
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, 'Progress changed in another tab. Reload progress before saving.')

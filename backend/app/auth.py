@@ -1,8 +1,6 @@
 """Single-agency development access; customer capabilities are separate."""
-import base64
 import hashlib
 import hmac
-import json
 import logging
 import os
 import re
@@ -10,6 +8,8 @@ import secrets
 import time
 from fastapi import APIRouter, HTTPException, Request, Response, Depends
 from sqlalchemy.orm import Session
+from sqlalchemy import delete
+from .models import OwnerSession
 from .db import get_db
 from .employee_auth import current_employee, end_employee_session, profile, COOKIE as EMPLOYEE_COOKIE
 from pydantic import BaseModel, Field
@@ -37,37 +37,47 @@ def access_code():
         raise RuntimeError('The local workspace access code must contain at least 16 characters. Restore or regenerate the access-code file.')
     return code
 
-def signed_session():
-    payload = base64.urlsafe_b64encode(json.dumps({'expires': int(time.time()) + 43200, 'nonce': secrets.token_hex(12)}).encode()).decode()
-    signature = hmac.new(access_code().encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return payload + '.' + signature
+def end_owner_session(request, db):
+    token = request.cookies.get(COOKIE, '')
+    if token:
+        db.execute(delete(OwnerSession).where(OwnerSession.token_hash == hashlib.sha256(token.encode()).hexdigest()))
+
 
 def agency_allowed(request):
     if current_employee(request) is not None:
         return True
+    return owner_allowed(request)
+
+
+def owner_allowed(request, db=None):
     secret = access_code()
     provided = request.headers.get('x-agency-key', '')
     if provided and hmac.compare_digest(provided.encode(), secret.encode()):
         return True
-    try:
-        payload, signature = request.cookies.get(COOKIE, '').split('.')
-        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        return hmac.compare_digest(signature, expected) and json.loads(base64.urlsafe_b64decode(payload))['expires'] > time.time()
-    except (ValueError, KeyError, TypeError, UnicodeDecodeError):
+    token = request.cookies.get(COOKIE, '')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{43}', token):
         return False
+    if db is None:
+        with request.app.state.session_factory() as session:
+            return owner_allowed(request, session)
+    session = db.get(OwnerSession, hashlib.sha256(token.encode()).hexdigest())
+    return bool(session and session.expires_at > time.time() and
+                hmac.compare_digest(session.credential_hash, hashlib.sha256(secret.encode()).hexdigest()))
 
 class LoginIn(BaseModel):
     code: str = Field(min_length=1, max_length=256)
 
 @router.get('/session')
 def session(request: Request, db: Session = Depends(get_db)):
+    if owner_allowed(request, db):
+        return {'authenticated': True}
     employee = current_employee(request, db)
     if employee:
         return {'authenticated': True, 'employee': profile(employee)}
     return {'authenticated': bool(agency_allowed(request))}
 
 @router.post('/login')
-async def login(data: LoginIn, request: Request, response: Response):
+async def login(data: LoginIn, request: Request, response: Response, db: Session = Depends(get_db)):
     address = request.client.host if request.client else 'local'
     recent = [t for t in _failures.get(address, []) if t > time.time() - LOGIN_WINDOW]
     if len(recent) >= 5:
@@ -76,12 +86,21 @@ async def login(data: LoginIn, request: Request, response: Response):
         _failures[address] = [*recent, time.time()]
         raise HTTPException(401, 'The workspace access code is incorrect.')
     _failures.pop(address, None)
-    response.set_cookie(COOKIE, signed_session(), httponly=True, secure=request.url.scheme == 'https', samesite='strict', max_age=43200, path='/')
+    end_owner_session(request, db)
+    end_employee_session(request, db)
+    db.execute(delete(OwnerSession).where(OwnerSession.expires_at <= time.time()))
+    token = secrets.token_urlsafe(32)
+    db.add(OwnerSession(token_hash=hashlib.sha256(token.encode()).hexdigest(),
+        credential_hash=hashlib.sha256(access_code().encode()).hexdigest(), expires_at=time.time()+43200))
+    db.commit()
+    response.delete_cookie(EMPLOYEE_COOKIE, path='/')
+    response.set_cookie(COOKIE, token, httponly=True, secure=request.url.scheme == 'https', samesite='strict', max_age=43200, path='/')
     return {'authenticated': True}
 
 @router.post('/logout')
 async def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     end_employee_session(request, db)
+    end_owner_session(request, db)
     db.commit()
     response.delete_cookie(COOKIE, path='/')
     response.delete_cookie(EMPLOYEE_COOKIE, path='/')

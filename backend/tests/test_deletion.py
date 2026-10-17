@@ -89,6 +89,7 @@ def test_anonymous_cannot_delete_company_or_other_customer_reports(client):
 @pytest.mark.parametrize('actor', ['customer', 'company'])
 def test_deletion_rejected_while_own_report_is_processing(client, actor, monkeypatch):
     _, _, _, item = customer_record(client)
+    assert client.post(f'/api/public/submissions/{item["access_token"]}/submit', json={}).status_code == 200
     with database() as db:
         feedback_id = db.scalar(select(CustomerSubmission.feedback_id))
     class Locked:

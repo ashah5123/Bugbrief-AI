@@ -1,3 +1,4 @@
+import Conversation from "./Conversation";
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock3, LoaderCircle, UserRound } from "lucide-react";
 import { api, type IssueWorkflow, type IssueEmployee } from "./types";
@@ -22,7 +23,8 @@ const explanations: Record<string, string> = {
   in_progress:
     "An assigned employee is investigating or working on this issue.",
   ready_to_retest: "The company says the fix is ready for you to try again.",
-  resolved: "The company has marked this issue as resolved.",
+  resolved:
+    "This issue is resolved. Check the history below for confirmation details.",
 };
 export function WorkflowBadge({
   workflow,
@@ -63,7 +65,35 @@ export function ProgressTimeline({ workflow }: { workflow: IssueWorkflow }) {
     </div>
   );
 }
-export function CustomerProgress({ workflow }: { workflow: IssueWorkflow }) {
+export function CustomerProgress({
+  workflow,
+  token,
+  onChange,
+}: {
+  workflow: IssueWorkflow;
+  token?: string;
+  onChange?: (value: IssueWorkflow) => void;
+}) {
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  async function confirm(outcome: "works" | "still_happening") {
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api<IssueWorkflow>(
+        `/public/submissions/${token}/retest`,
+        "POST",
+        { version: workflow.retest_version, outcome, note },
+      );
+      onChange?.(result);
+      setNote("");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <section className="customer-progress-card" aria-label="Report progress">
       <div className="progress-card-heading">
@@ -80,6 +110,48 @@ export function CustomerProgress({ workflow }: { workflow: IssueWorkflow }) {
             : "Waiting for an employee to be assigned"}
         </span>
       </div>
+      {token && workflow.status === "ready_to_retest" && (
+        <div className="retest-card">
+          <h3>Did the fix work?</h3>
+          <p>Try the same steps again, then let the team know.</p>
+          <label>
+            Retest details
+            <textarea
+              rows={2}
+              maxLength={1000}
+              value={note}
+              disabled={busy}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Required if the issue is still happening"
+            />
+          </label>
+          <div className="retest-actions">
+            <button
+              className="primary-button"
+              disabled={busy}
+              onClick={() => void confirm("works")}
+            >
+              It works
+            </button>
+            <button
+              className="secondary-button"
+              disabled={busy || !note.trim()}
+              onClick={() => void confirm("still_happening")}
+            >
+              Still happening
+            </button>
+          </div>
+          <small>
+            “It works” resolves your report. “Still happening” sends it back to
+            the team.
+          </small>
+          {error && (
+            <p className="alert error" role="alert">
+              {error} Refresh this page if the fix has changed.
+            </p>
+          )}
+        </div>
+      )}
       <ProgressTimeline workflow={workflow} />
     </section>
   );
@@ -121,171 +193,174 @@ export default function WorkflowPanel({
     employeeId !== (workflow.assigned_employee_id || "") ||
     !!note.trim();
   return (
-    <section className="workflow-panel" aria-label="Assignment and progress">
-      <div className="progress-card-heading">
-        <div>
-          <span className="eyebrow">FROM REPORT TO RESOLUTION</span>
-          <h3>Assignment & progress</h3>
+    <>
+      <section className="workflow-panel" aria-label="Assignment and progress">
+        <div className="progress-card-heading">
+          <div>
+            <span className="eyebrow">FROM REPORT TO RESOLUTION</span>
+            <h3>Assignment & progress</h3>
+          </div>
+          <WorkflowBadge workflow={workflow} />
         </div>
-        <WorkflowBadge workflow={workflow} />
-      </div>
-      <p>
-        Choose who owns this issue and keep the customer informed. Report edits
-        won’t change its progress.
-      </p>
-      <form
-        onSubmit={async (event) => {
-          event.preventDefault();
-          setBusy(true);
-          setError("");
-          setSaved(false);
-          try {
-            const value = await api<IssueWorkflow>(
-              `/feedback/${feedbackId}/workflow`,
-              "PATCH",
-              {
-                version: baseVersion,
-                status,
-                assigned_employee_id: employeeId || null,
-                note,
-              },
-            );
-            dirty.current = false;
-            setBaseVersion(value.version);
-            onChange(value);
-            setNote("");
-            setSaved(true);
-          } catch (e) {
-            setError((e as Error).message);
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        <div className="workflow-fields">
-          <label>
-            Assigned employee
-            <select
-              aria-label="Assigned employee"
-              disabled={busy}
-              value={employeeId}
-              onChange={(event) => {
-                dirty.current = true;
-                setEmployeeId(event.target.value);
-                setSaved(false);
-              }}
-            >
-              <option value="">Unassigned</option>
-              {employees.map((employee) => (
-                <option key={employee.id} value={employee.id}>
-                  {employee.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Issue status
-            <select
-              aria-label="Issue status"
-              disabled={busy}
-              value={status}
-              onChange={(event) => {
-                dirty.current = true;
-                setStatus(event.target.value);
-                setSaved(false);
-              }}
-            >
-              {[workflow.status, ...transitions[workflow.status]].map(
-                (value) => (
-                  <option key={value} value={value}>
-                    {workflowLabels[value]}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-        </div>
-        {!employees.length && (
-          <small>
-            Create an employee account to assign work.{" "}
-            <a href="/workspace?employee=choose">Employee accounts →</a>
-          </small>
-        )}
-        <label>
-          Customer-visible update{" "}
-          <span>
-            {status === "needs_information" && workflow.status !== status
-              ? "required"
-              : "optional"}
-          </span>
-          <textarea
-            rows={2}
-            maxLength={1000}
-            required={
-              status === "needs_information" && workflow.status !== status
+        <p>
+          Choose who owns this issue and keep the customer informed. Report
+          edits won’t change its progress.
+        </p>
+        <form
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError("");
+            setSaved(false);
+            try {
+              const value = await api<IssueWorkflow>(
+                `/feedback/${feedbackId}/workflow`,
+                "PATCH",
+                {
+                  version: baseVersion,
+                  status,
+                  assigned_employee_id: employeeId || null,
+                  note,
+                },
+              );
+              dirty.current = false;
+              setBaseVersion(value.version);
+              onChange(value);
+              setNote("");
+              setSaved(true);
+            } catch (e) {
+              setError((e as Error).message);
+            } finally {
+              setBusy(false);
             }
-            disabled={busy}
-            value={note}
-            onChange={(event) => {
-              dirty.current = true;
-              setNote(event.target.value);
-              setSaved(false);
-            }}
-            placeholder="e.g. We’re checking checkout. We’ll post an update when it’s ready to try."
-          />
-        </label>
-        <small>
-          This update and assignment are visible to the customer. Keep internal
-          notes and private details out.
-        </small>
-        {error && (
-          <div className="alert error" role="alert">
-            {error}
-            <button
-              type="button"
-              className="text-button"
+          }}
+        >
+          <div className="workflow-fields">
+            <label>
+              Assigned employee
+              <select
+                aria-label="Assigned employee"
+                disabled={busy}
+                value={employeeId}
+                onChange={(event) => {
+                  dirty.current = true;
+                  setEmployeeId(event.target.value);
+                  setSaved(false);
+                }}
+              >
+                <option value="">Unassigned</option>
+                {employees.map((employee) => (
+                  <option key={employee.id} value={employee.id}>
+                    {employee.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Issue status
+              <select
+                aria-label="Issue status"
+                disabled={busy}
+                value={status}
+                onChange={(event) => {
+                  dirty.current = true;
+                  setStatus(event.target.value);
+                  setSaved(false);
+                }}
+              >
+                {[workflow.status, ...transitions[workflow.status]].map(
+                  (value) => (
+                    <option key={value} value={value}>
+                      {workflowLabels[value]}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          </div>
+          {!employees.length && (
+            <small>
+              Create an employee account to assign work.{" "}
+              <a href="/workspace?employee=choose">Employee accounts →</a>
+            </small>
+          )}
+          <label>
+            Customer-visible update{" "}
+            <span>
+              {status === "needs_information" && workflow.status !== status
+                ? "required"
+                : "optional"}
+            </span>
+            <textarea
+              rows={2}
+              maxLength={1000}
+              required={
+                status === "needs_information" && workflow.status !== status
+              }
               disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  const value = await api<IssueWorkflow>(
-                    `/feedback/${feedbackId}/workflow`,
-                  );
-                  dirty.current = !!note.trim();
-                  setBaseVersion(value.version);
-                  onChange(value);
-                  setStatus(value.status);
-                  setEmployeeId(value.assigned_employee_id || "");
-                  setError("");
-                } catch (e) {
-                  setError((e as Error).message);
-                } finally {
-                  setBusy(false);
-                }
+              value={note}
+              onChange={(event) => {
+                dirty.current = true;
+                setNote(event.target.value);
+                setSaved(false);
               }}
-            >
-              Reload progress
+              placeholder="e.g. We’re checking checkout. We’ll post an update when it’s ready to try."
+            />
+          </label>
+          <small>
+            This update and assignment are visible to the customer. Keep
+            internal notes and private details out.
+          </small>
+          {error && (
+            <div className="alert error" role="alert">
+              {error}
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    const value = await api<IssueWorkflow>(
+                      `/feedback/${feedbackId}/workflow`,
+                    );
+                    dirty.current = !!note.trim();
+                    setBaseVersion(value.version);
+                    onChange(value);
+                    setStatus(value.status);
+                    setEmployeeId(value.assigned_employee_id || "");
+                    setError("");
+                  } catch (e) {
+                    setError((e as Error).message);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Reload progress
+              </button>
+            </div>
+          )}
+          <div className="workflow-actions">
+            {saved && (
+              <span role="status">
+                <Check size={14} />
+                Progress saved
+              </span>
+            )}
+            <button className="primary-button" disabled={busy || !changed}>
+              {busy ? (
+                <LoaderCircle size={15} className="spin" />
+              ) : (
+                <Check size={15} />
+              )}
+              Save progress
             </button>
           </div>
-        )}
-        <div className="workflow-actions">
-          {saved && (
-            <span role="status">
-              <Check size={14} />
-              Progress saved
-            </span>
-          )}
-          <button className="primary-button" disabled={busy || !changed}>
-            {busy ? (
-              <LoaderCircle size={15} className="spin" />
-            ) : (
-              <Check size={15} />
-            )}
-            Save progress
-          </button>
-        </div>
-      </form>
-      <ProgressTimeline workflow={workflow} />
-    </section>
+        </form>
+        <ProgressTimeline workflow={workflow} />
+      </section>
+      <Conversation key={feedbackId} feedbackId={feedbackId} />
+    </>
   );
 }

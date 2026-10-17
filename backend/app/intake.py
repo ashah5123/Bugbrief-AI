@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 import secrets
 from urllib.parse import urlsplit
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import Field
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
@@ -48,6 +48,9 @@ def submission(db, token, request):
     return item
 
 def authorize_submission(db, item, request):
+    from .project_access import require_customer_project
+    link = db.get(IntakeLink, item.link_id)
+    require_customer_project(request, db, link.project_id)
     if item.account_id:
         account = current_customer(request, db)
         if account is None or account.id != item.account_id:
@@ -114,9 +117,11 @@ async def revoke_link(project_id: str, db: Session = Depends(get_db)):
     return {'revoked': True}
 
 @router.get('/api/public/intake/{token}')
-def intake_config(token: str, db: Session = Depends(get_db)):
+def intake_config(token: str, request: Request, db: Session = Depends(get_db)):
     link = active_link(db, token)
     project = db.get(Project, link.project_id)
+    from .project_access import require_customer_project
+    require_customer_project(request, db, link.project_id)
     return {'project_name': project.name, 'project_url': project.url, 'allowed_origin': origin(project.url)}
 
 def set_draft(item, feedback, data):
@@ -134,6 +139,8 @@ def set_draft(item, feedback, data):
 @router.post('/api/public/intake/{token}/submissions', status_code=201)
 async def create_submission(token: str, data: CustomerCreate, request: Request, db: Session = Depends(get_db)):
     link = active_link(db, token)
+    from .project_access import require_customer_project
+    require_customer_project(request, db, link.project_id)
     existing = db.scalar(select(CustomerSubmission).where(CustomerSubmission.link_id == link.id, CustomerSubmission.client_nonce == data.client_nonce))
     if existing is not None:
         if existing.stage == 'deleted':
@@ -270,7 +277,7 @@ async def process_submission(token: str, data: GenerateIn, request: Request, db:
     return snapshot(db, item)
 
 @router.post('/api/public/submissions/{token}/submit')
-async def finish_submission(token: str, request: Request, db: Session = Depends(get_db)):
+async def finish_submission(token: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     item = submission(db, token, request)
     if item.stage == 'submitted':
         return snapshot(db, item)
@@ -281,5 +288,8 @@ async def finish_submission(token: str, request: Request, db: Session = Depends(
     item.stage = 'submitted'
     item.submitted_at = now()
     feedback.updated_at = now()
+    from .notifications import emit, deliver_pending
+    emit(db, request, feedback, 'report_received', 'New customer report', company=True)
     db.commit()
+    background_tasks.add_task(deliver_pending, request.app.state.session_factory)
     return snapshot(db, item)
