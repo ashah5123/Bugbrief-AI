@@ -38,7 +38,7 @@ def serialize(item, db=None):
         result['attachments'] = [serialize(a) for a in attachments(db, item.id)]
         result['clarifications'] = [serialize(c) for c in clarifications(db, item.id)]
         customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
-        result['customer'] = {'reporter_name': customer.reporter_name, 'stage': customer.stage, 'context': customer.context, 'submitted_at': customer.submitted_at} if customer else None
+        result['customer'] = {'id': customer.account_id or customer.id, 'reporter_name': customer.reporter_name, 'stage': customer.stage, 'context': customer.context, 'submitted_at': customer.submitted_at} if customer else None
     return result
 
 def report_evidence(db, item):

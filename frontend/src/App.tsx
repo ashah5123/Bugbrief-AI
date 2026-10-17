@@ -1,3 +1,4 @@
+import { compareTriage, customerKey, overdue, priorityLabels, TriageBadges, todayLocal } from "./triage";
 import { browserStorage, clearCompanyDrafts } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
 import {
@@ -169,6 +170,15 @@ export default function App() {
   const [view, setView] = useState<View>("overview");
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<IssueEmployee[]>([]);
+  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [customerFilter, setCustomerFilter] = useState("all");
+  const [attentionFilter, setAttentionFilter] = useState("all");
+  const [sort, setSort] = useState("triage");
+  const [today, setToday] = useState(todayLocal);
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(todayLocal()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [progressFilter, setProgressFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [items, setItems] = useState<Feedback[]>([]);
@@ -264,9 +274,11 @@ export default function App() {
       )
         browserStorage.removeItem(key);
     }
-    setSelected((previous) =>
-      previous && !f.some((item) => item.id === previous.id) ? null : previous,
-    );
+    setSelected((previous) => {
+      if (!previous) return null;
+      const latest = f.find(item => item.id === previous.id);
+      return latest ? { ...previous, workflow: latest.workflow } : null;
+    });
     setActiveId((previous) =>
       previous && !f.some((item) => item.id === previous) ? null : previous,
     );
@@ -378,20 +390,36 @@ export default function App() {
     health.free_tier_confirmed &&
     !health.usage.paused &&
     health.usage.attempts < health.usage.limit;
+  const hasFilters = !!search || statusFilter !== "all" || projectFilter !== "all" ||
+    progressFilter !== "all" || assigneeFilter !== "all" || priorityFilter !== "all" ||
+    customerFilter !== "all" || attentionFilter !== "all";
+  const customers = [...new Map(items.filter(item => item.customer).map(item => [customerKey(item), item.customer!.reporter_name || "Unnamed customer"])).entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]));
+  function resetFilters() {
+    setSearch(""); setStatusFilter("all"); setProjectFilter("all");
+    setProgressFilter("all"); setAssigneeFilter("all"); setPriorityFilter("all");
+    setCustomerFilter("all"); setAttentionFilter("all");
+  }
   const filtered = items.filter(
     (i) =>
       (view !== "reports" || i.report) &&
       (projectFilter === "all" || i.project_id === projectFilter) &&
       (statusFilter === "all" || i.status === statusFilter) &&
+      (priorityFilter === "all" || (i.workflow.priority || "normal") === priorityFilter) &&
+      (customerFilter === "all" || customerKey(i) === customerFilter) &&
+      (attentionFilter === "all" ||
+        (attentionFilter === "overdue" && overdue(i.workflow, today)) ||
+        (attentionFilter === "waiting" && !!i.workflow.waiting_since) ||
+        (attentionFilter === "today" && i.workflow.status !== "resolved" && i.workflow.due_date === today)) &&
       (progressFilter === "all" || i.workflow.status === progressFilter) &&
       (assigneeFilter === "all" ||
         (assigneeFilter === "unassigned"
           ? !i.workflow.assigned_employee_id
           : i.workflow.assigned_employee_id === assigneeFilter)) &&
-      `${i.text} ${i.report?.title || ""}`
+      `${i.id} ${i.text} ${i.report?.title || ""} ${i.customer?.reporter_name || ""} ${i.workflow.assigned_to?.name || ""} ${projects.find(p => p.id === i.project_id)?.name || ""}`
         .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+        .includes(search.trim().toLowerCase()),
+  ).sort((a, b) => compareTriage(a, b, sort, today));
   function navigate(next: View) {
     setView(next);
     setMobileNav(false);
@@ -399,6 +427,9 @@ export default function App() {
     setStatusFilter("all");
     setProgressFilter("all");
     setAssigneeFilter("all");
+    setPriorityFilter("all");
+    setCustomerFilter("all");
+    setAttentionFilter("all");
   }
   function updateWorkflow(feedbackId: string, value: IssueWorkflow) {
     setItems((existing) =>
@@ -888,6 +919,18 @@ export default function App() {
               </div>
             </>
           )}
+          {view !== "projects" && <section className="triage-summary" aria-label="Reports needing attention">
+            {([
+              ["overdue", "Overdue reports", items.filter(item => overdue(item.workflow, today)).length],
+              ["today", "Due today", items.filter(item => item.workflow.status !== "resolved" && item.workflow.due_date === today).length],
+              ["waiting", "Customers awaiting reply", items.filter(item => !!item.workflow.waiting_since).length],
+            ] as const).map(([value, label, count]) => <button key={value}
+              className={attentionFilter === value ? "selected" : ""}
+              aria-pressed={attentionFilter === value}
+              onClick={() => { navigate("feedback"); resetFilters(); setAttentionFilter(value); }}>
+              <strong>{count}</strong><span>{label}</span><ArrowRight size={16} />
+            </button>)}
+          </section>}
           {(view === "overview" || view === "feedback") && (
             <details
               className="agency-capture"
@@ -1294,7 +1337,7 @@ export default function App() {
                       <Search size={15} />
                       <input
                         aria-label="Search feedback"
-                        placeholder="Search feedback…"
+                        placeholder="Search reports, customers…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                       />
@@ -1349,6 +1392,34 @@ export default function App() {
                       ))}
                     </select>
                   </label>
+                  <label>Customer
+                    <select aria-label="Filter by customer" value={customerFilter} onChange={event => setCustomerFilter(event.target.value)}>
+                      <option value="all">All customers</option>
+                      <option value="manual">Manual intake</option>
+                      {customers.map(([value, label]) => <option key={value} value={value}>{label}{customers.filter(([, name]) => name === label).length > 1 ? ` · ${value.slice(9, 17)}` : ""}</option>)}
+                    </select>
+                  </label>
+                  <label>Priority
+                    <select aria-label="Filter by priority" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>
+                      <option value="all">All priorities</option>
+                      {Object.entries(priorityLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label>Needs attention
+                    <select aria-label="Filter by attention" value={attentionFilter} onChange={event => setAttentionFilter(event.target.value)}>
+                      <option value="all">All reports</option><option value="overdue">Overdue</option>
+                      <option value="today">Due today</option><option value="waiting">Customer awaiting reply</option>
+                    </select>
+                  </label>
+                  <label>Sort
+                    <select aria-label="Sort reports" value={sort} onChange={event => setSort(event.target.value)}>
+                      <option value="triage">Needs attention first</option><option value="due">Due date first</option><option value="newest">Newest first</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="filter-results" aria-live="polite">
+                  <span>{filtered.length} {filtered.length === 1 ? "report" : "reports"} match{filtered.length === 1 ? "es" : ""}{view === "overview" && filtered.length > 5 ? " · Showing first 5" : ""}</span>
+                  {hasFilters && filtered.length > 0 && <button className="text-button" onClick={resetFilters}>Clear filters</button>}
                 </div>
                 <div className="table-header">
                   <span>FEEDBACK / REPORT</span>
@@ -1363,6 +1434,7 @@ export default function App() {
                     .map((item) => (
                       <button
                         className="feedback-row"
+                        data-report-id={item.id}
                         key={item.id}
                         onClick={() => openItem(item)}
                       >
@@ -1386,7 +1458,7 @@ export default function App() {
                             <small>
                               {item.customer && (
                                 <span className="customer-source-badge">
-                                  Customer ·{" "}
+                                  {item.customer.reporter_name || "Customer"} ·{" "}
                                 </span>
                               )}
                               {item.report
@@ -1396,6 +1468,7 @@ export default function App() {
                               {" · "}
                               {item.workflow.assigned_to?.name || "Unassigned"}
                             </small>
+                            <TriageBadges workflow={item.workflow} today={today} />
                           </span>
                         </div>
                         <span className="project-cell">
@@ -1420,22 +1493,14 @@ export default function App() {
                       </span>
                     </div>
                     <h3>
-                      {search ||
-                      statusFilter !== "all" ||
-                      projectFilter !== "all" ||
-                      progressFilter !== "all" ||
-                      assigneeFilter !== "all"
+                      {hasFilters
                         ? "No matches just yet."
                         : view === "reports"
                           ? "Your first clear brief starts here."
                           : "Good fixes start with a little feedback."}
                     </h3>
                     <p>
-                      {search ||
-                      statusFilter !== "all" ||
-                      projectFilter !== "all" ||
-                      progressFilter !== "all" ||
-                      assigneeFilter !== "all"
+                      {hasFilters
                         ? "Try a different search or filter."
                         : view === "reports"
                           ? "Generate a report from client feedback, then make it your own."
@@ -1444,18 +1509,8 @@ export default function App() {
                     <button
                       className="text-button"
                       onClick={
-                        search ||
-                        statusFilter !== "all" ||
-                        projectFilter !== "all" ||
-                        progressFilter !== "all" ||
-                        assigneeFilter !== "all"
-                          ? () => {
-                              setSearch("");
-                              setStatusFilter("all");
-                              setProjectFilter("all");
-                              setProgressFilter("all");
-                              setAssigneeFilter("all");
-                            }
+                        hasFilters
+                          ? resetFilters
                           : () => {
                               if (!projects.length) setModal("project");
                               else {
@@ -1466,11 +1521,7 @@ export default function App() {
                             }
                       }
                     >
-                      {search ||
-                      statusFilter !== "all" ||
-                      projectFilter !== "all" ||
-                      progressFilter !== "all" ||
-                      assigneeFilter !== "all"
+                      {hasFilters
                         ? "Clear filters"
                         : projects.length
                           ? "Try with example feedback"

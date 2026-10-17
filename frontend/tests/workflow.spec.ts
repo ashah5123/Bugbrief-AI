@@ -122,6 +122,7 @@ test("manual report fixture: edit, save, reopen and retain source evidence", asy
   );
   expect(result.ok()).toBe(true);
   await page.goto("/workspace");
+  await page.getByLabel("Filter by project", { exact: true }).selectOption(p.id);
   await page.getByRole("button", { name: report.title }).click();
   const drawer = page.getByRole("dialog", { name: "Review bug report" });
   await expect(drawer).toBeVisible();
@@ -150,6 +151,7 @@ test("manual report fixture: edit, save, reopen and retain source evidence", asy
   });
   await drawer.getByRole("button", { name: "Close report" }).click();
   await page.reload();
+  await page.getByLabel("Filter by project", { exact: true }).selectOption(p.id);
   await page.getByRole("button", { name: new RegExp(editedTitle) }).click();
   await expect(drawer.getByLabel("Title", { exact: true })).toHaveValue(
     editedTitle,

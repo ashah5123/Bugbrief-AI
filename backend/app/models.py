@@ -149,6 +149,8 @@ class EmployeeSession(Base):
 
 class IssueProgress(Base):
     __tablename__ = 'issue_progress'
+    priority: Mapped[str] = mapped_column(String, default='normal', server_default='normal')
+    due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), primary_key=True)
     status: Mapped[str] = mapped_column(String, default='new')
     assigned_employee_id: Mapped[str | None] = mapped_column(ForeignKey('employee_accounts.id'), nullable=True)

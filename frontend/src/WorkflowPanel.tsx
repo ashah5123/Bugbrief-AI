@@ -1,3 +1,4 @@
+import TriagePanel from "./TriagePanel";
 import Conversation from "./Conversation";
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock3, LoaderCircle, UserRound } from "lucide-react";
@@ -194,6 +195,7 @@ export default function WorkflowPanel({
     !!note.trim();
   return (
     <>
+      <TriagePanel key={feedbackId} feedbackId={feedbackId} workflow={workflow} onChange={onChange} />
       <section className="workflow-panel" aria-label="Assignment and progress">
         <div className="progress-card-heading">
           <div>

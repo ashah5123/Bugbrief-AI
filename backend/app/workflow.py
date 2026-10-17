@@ -1,12 +1,14 @@
 """Issue progress is independent of report generation and evidence versions."""
+from datetime import date
+import re
 from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
-from pydantic import Field
+from pydantic import Field, field_validator
 from sqlalchemy import select, update, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from .db import get_db
-from .models import Feedback, CustomerSubmission, EmployeeAccount, EmployeeProject, IssueProgress, IssueEvent, now
+from .models import Feedback, CustomerSubmission, EmployeeAccount, EmployeeProject, IssueProgress, IssueEvent, ReportMessage, now
 from .schemas import StrictModel
 
 router = APIRouter()
@@ -24,6 +26,30 @@ def received_at(db, feedback):
     return submission.submitted_at if submission and submission.submitted_at else feedback.created_at
 
 
+def waiting_since(db, feedback, status):
+    """Only public responses clear a customer's wait; reads and private notes do not."""
+    submission = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == feedback.id))
+    if not submission or submission.stage != 'submitted' or status == 'resolved':
+        return None
+    customer_reply = db.scalar(select(func.max(ReportMessage.created_at)).where(
+        ReportMessage.feedback_id == feedback.id, ReportMessage.visibility == 'public',
+        ReportMessage.author_role == 'customer'))
+    retest = db.scalar(select(func.max(IssueEvent.created_at)).where(
+        IssueEvent.feedback_id == feedback.id,
+        IssueEvent.label == 'Customer says the issue is still happening'))
+    customer_at = max(v for v in (submission.submitted_at or feedback.created_at, customer_reply, retest) if v)
+    company_reply = db.scalar(select(func.max(ReportMessage.created_at)).where(
+        ReportMessage.feedback_id == feedback.id, ReportMessage.visibility == 'public',
+        ReportMessage.author_role == 'company'))
+    company_update = db.scalar(select(func.max(IssueEvent.created_at)).where(
+        IssueEvent.feedback_id == feedback.id,
+        ~IssueEvent.label.in_(['Customer confirmed the fix', 'Customer says the issue is still happening']),
+        (IssueEvent.note != '') | IssueEvent.label.like('Status changed to %') |
+        IssueEvent.label.like('Report reopened%')))
+    responses = [v for v in (company_reply, company_update) if v]
+    return customer_at if not responses or customer_at > max(responses) else None
+
+
 def progress_snapshot(db, feedback, public=False, history=True):
     progress = db.get(IssueProgress, feedback.id)
     employee = db.get(EmployeeAccount, progress.assigned_employee_id) if progress and progress.assigned_employee_id else None
@@ -35,7 +61,10 @@ def progress_snapshot(db, feedback, public=False, history=True):
         value['retest_version'] = progress.version
     if not public:
         value.update(version=progress.version if progress else 0,
-                     assigned_employee_id=progress.assigned_employee_id if progress else None)
+                     assigned_employee_id=progress.assigned_employee_id if progress else None,
+                     priority=progress.priority if progress else 'normal',
+                     due_date=progress.due_date if progress else None,
+                     waiting_since=waiting_since(db, feedback, status))
     if history:
         events = db.scalars(select(IssueEvent).where(IssueEvent.feedback_id == feedback.id)
             .order_by(IssueEvent.created_at.desc(), IssueEvent.id.desc()).limit(50)).all()
@@ -138,5 +167,48 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, request: Reque
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, 'Progress changed in another tab. Reload progress before saving.')
+    db.expire_all()
+    return progress_snapshot(db, db.get(Feedback, feedback_id))
+
+
+class TriageUpdate(StrictModel):
+    version: int = Field(ge=0)
+    priority: Literal['low', 'normal', 'high', 'urgent']
+    due_date: str | None = Field(default=None, max_length=10)
+
+    @field_validator('due_date')
+    @classmethod
+    def calendar_date(cls, value):
+        if value is not None:
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+                raise ValueError('Choose a date in YYYY-MM-DD format.')
+            date.fromisoformat(value)
+        return value
+
+
+@router.patch('/api/feedback/{feedback_id}/triage')
+def update_triage(feedback_id: str, data: TriageUpdate, db: Session = Depends(get_db)):
+    feedback = visible_feedback(db, feedback_id)
+    current = db.get(IssueProgress, feedback_id)
+    version = current.version if current else 0
+    if version != data.version:
+        raise HTTPException(409, 'Report changed in another tab. Reload triage before saving.')
+    if current and current.priority == data.priority and current.due_date == data.due_date:
+        return progress_snapshot(db, feedback)
+    values = dict(priority=data.priority, due_date=data.due_date, version=version + 1, updated_at=now())
+    try:
+        if current:
+            changed = db.execute(update(IssueProgress).where(IssueProgress.feedback_id == feedback_id,
+                IssueProgress.version == data.version).values(**values))
+            if changed.rowcount != 1:
+                raise HTTPException(409, 'Report changed in another tab. Reload triage before saving.')
+        else:
+            db.add(IssueProgress(feedback_id=feedback_id, status='new', **values))
+            db.flush()
+            db.add(IssueEvent(feedback_id=feedback_id, label='Report received', note='', created_at=received_at(db, feedback)))
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(409, 'Report changed in another tab. Reload triage before saving.')
     db.expire_all()
     return progress_snapshot(db, db.get(Feedback, feedback_id))

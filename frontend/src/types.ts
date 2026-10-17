@@ -45,6 +45,7 @@ export type Clarification = {
   created_at: string;
 };
 export type CustomerMetadata = {
+  id: string;
   reporter_name: string;
   stage: string;
   submitted_at: string | null;
@@ -61,7 +62,11 @@ export type CustomerMetadata = {
   };
 };
 export type IssueEmployee = { id: string; name: string; project_ids: string[] };
+export type IssuePriority = 'low' | 'normal' | 'high' | 'urgent';
 export type IssueWorkflow = {
+  priority?: IssuePriority;
+  due_date?: string | null;
+  waiting_since?: string | null;
   retest_version?: number;
   status: string;
   label: string;

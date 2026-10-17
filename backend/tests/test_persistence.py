@@ -303,3 +303,43 @@ with TestClient(app) as client:
 """
     for code in (create,logout,replay):
         subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+
+
+def test_triage_upgrade_and_restart_preserve_existing_workflow(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    path = tmp_path / 'triage.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{path}', 'AGENCY_ACCESS_CODE': 'triage-restart-owner-code', 'MAIL_MODE': 'local'}
+    def migrate(version):
+        subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', version], cwd=root, env=env, check=True, capture_output=True)
+    migrate('0010')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at) VALUES ('p','Existing project','','old')")
+        db.execute("INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Keep original feedback','','','','draft',3,'old','old')")
+        db.execute("INSERT INTO issue_progress (feedback_id,status,version,updated_at) VALUES ('f','needs_information',7,'old')")
+        db.execute("INSERT INTO issue_events (id,feedback_id,label,note,created_at) VALUES ('e','f','Update from the company','Which browser?','old')")
+    migrate('head')
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT status,version,updated_at,priority,due_date FROM issue_progress').fetchone() == ('needs_information',7,'old','normal',None)
+        assert db.execute('SELECT note FROM issue_events').fetchone() == ('Which browser?',)
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    write = """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='triage-restart-owner-code'
+    r=c.patch('/api/feedback/f/triage',json={'version':7,'priority':'urgent','due_date':'2027-01-01'})
+    assert r.status_code==200 and r.json()['status']=='needs_information'
+"""
+    read = """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='triage-restart-owner-code'
+    r=c.get('/api/feedback/f').json()
+    assert r['workflow']['priority']=='urgent' and r['workflow']['due_date']=='2027-01-01'
+    assert r['workflow']['version']==8 and r['version']==3
+    assert r['workflow']['events'][-1]['note']=='Which browser?'
+"""
+    for code in (write, read):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)

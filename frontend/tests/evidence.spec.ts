@@ -142,6 +142,7 @@ test("answer suggested questions, keep corrections and preserve unsaved manual r
     data: { version: item.version, report },
   });
   await page.goto("/workspace");
+  await page.getByLabel("Filter by project", { exact: true }).selectOption(p.id);
   await page.getByRole("button", { name: new RegExp(report.title) }).click();
   const drawer = page.getByRole("dialog", { name: "Review bug report" });
   const manualTitle = `Keep these manual edits ${info.project.name}`;
@@ -188,6 +189,7 @@ test("answer suggested questions, keep corrections and preserve unsaved manual r
     fullPage: false,
   });
   await page.reload();
+  await page.getByLabel("Filter by project", { exact: true }).selectOption(p.id);
   await page.getByRole("button", { name: new RegExp(manualTitle) }).click();
   await page
     .getByRole("dialog", { name: "Review bug report" })
