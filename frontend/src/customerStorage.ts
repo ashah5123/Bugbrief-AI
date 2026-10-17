@@ -1,9 +1,11 @@
+import type { IssueWorkflow } from "./types";
 export type SavedSubmission = {
   access_token: string;
   project_name: string;
   reference: string;
   stage: string;
   account_owned?: boolean;
+  workflow?: IssueWorkflow | null;
 };
 const manifestKey = "bugbrief-my-submissions";
 export function savedSubmissions(): SavedSubmission[] {

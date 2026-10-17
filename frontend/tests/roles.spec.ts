@@ -29,6 +29,10 @@ test("welcome routes company through sign-in and customers through a scoped link
     fullPage: true,
   });
   await page.getByRole("link", { name: /I’m with the company/ }).click();
+  await expect(
+    page.getByRole("link", { name: /I’m an existing employee/ }),
+  ).toBeVisible();
+  await page.getByText("Workspace owner access", { exact: true }).click();
   await expect(page.getByLabel("Workspace access code")).toBeVisible();
   expect((await context.request.get(`${api}/feedback`)).status()).toBe(401);
   await page.getByLabel("Workspace access code").fill("e2e-agency-access-code");

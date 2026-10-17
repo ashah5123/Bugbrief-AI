@@ -47,4 +47,24 @@ Alembic `0004` adds `Feedback.deleted_at`. A shared deletion service enforces th
 
 A `CustomerMembership` is established only by a valid project capability. An optional `CustomerSubmission.account_id` assigns ownership when a signed-in customer creates a report; an explicit claim can assign an old guest report using its existing private capability. Claims use a conditional update and cannot take another account’s submission. Public report/image/mutation routes enforce the assigned account even when the private token is known. The authenticated report and project lists filter by the current account. Revoking an invitation prevents new reports while preserving the owner’s access to already-owned reports. Guest submissions retain their earlier revocation behavior.
 
-No email verification, password reset, MFA or company employee accounts are implemented. The email field is a local login identifier and never auto-enrolls a customer or claims reports. Source, tests and screenshots use only non-sensitive sample accounts. All browser tests run against disposable SQLite; no sample account is created in the operator’s database.
+No email verification, password reset or MFA is implemented. Company employee accounts are implemented separately below. The email field is a local login identifier and never auto-enrolls a customer or claims reports. Source, tests and screenshots use only non-sensitive sample accounts. All browser tests run against disposable SQLite; no sample account is created in the operator’s database.
+
+
+## Company employees — migration 0006
+
+`EmployeeAccount` and `EmployeeSession` keep company identities separate from customer tables/cookies. Signup requires the existing operator/workspace code, checked before account creation. Employee credentials reuse the validated email/name schemas and scrypt password helper. Login uses the same generic failure response and separate `employee-login`/`employee-register` attempt counters. No project membership or customer session can authorize employee signup.
+
+Agency authorization accepts an active employee session in addition to existing operator credentials. Middleware reads employee sessions through `app.state.session_factory`, configured with the same database as route dependencies; tests replace both with their disposable factory. Twelve-hour sessions store token hashes only. Signing into an employee account clears the old owner-cookie fallback; logout removes the current server session and clears both company cookies. The customer session remains independent. Named identity reaches the workspace via React context, not browser-local profile storage.
+
+The company entry link uses `/workspace?employee=choose`, including for an already signed-in employee. `/workspace/signup` and `/workspace/signin` show the appropriate form, and successful authentication opens `/workspace`. There is one company per installation; every invited employee has the existing company project/report permissions. Admin/member permission tiers and employee account management remain separate work.
+
+
+## Assignment and issue progress — migration 0007
+
+`IssueProgress` stores a per-feedback status, optional employee FK, independent version and update timestamp. `IssueEvent` stores customer-visible update text and history; no internal-only note field was added. Existing feedback reads as New with a derived Report received event without a GET mutating the database. The first real update creates the state and initial event. This preserves earlier report/evidence `Feedback.status` and `Feedback.version` semantics.
+
+Only company-authorized requests can read the employee directory or mutate issue progress. Assignments must reference a real employee. Allowed transitions prevent skipping straight to resolution, and In progress / Ready to retest / Resolved require an owner. Needs information requires an explanatory public update. Updates use compare-and-swap on the progress version; stale requests and concurrent first inserts fail with 409. No inference call or report/evidence mutation is involved. Customer drafts cannot be assigned before final submission.
+
+Public/customer snapshots expose only the status, assignee display name, timestamps and public event text. Employee IDs, emails, progress versions and internal report/proposal data are excluded. Customer account lists include a small progress summary; individual submission access retains existing guest/account ownership enforcement. The latest 50 events are returned, while the UI presents newest first. Deleting a report erases progress and history alongside its evidence.
+
+The workspace has assignee/status filters and an unresolved count. Public tracking and the signed-in customer dashboard poll every 15 seconds and on focus. Form saves keep unsaved report edits intact; a stale workflow form retains its note and asks to reload progress. This remains a single-company local SQLite application, with no notification delivery, customer retest action or automatic source-code modification.

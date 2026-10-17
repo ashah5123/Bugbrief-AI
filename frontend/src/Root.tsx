@@ -30,9 +30,22 @@ export default function Root() {
         <p>Ask the agency for a new project link.</p>
       </div>
     );
-  if (location.pathname !== "/workspace") return <Welcome />;
+  if (
+    !["/workspace", "/workspace/signup", "/workspace/signin"].includes(
+      location.pathname,
+    )
+  )
+    return <Welcome />;
   return (
-    <AgencyGate>
+    <AgencyGate
+      mode={
+        location.pathname === "/workspace/signup"
+          ? "signup"
+          : location.pathname === "/workspace/signin"
+            ? "signin"
+            : "home"
+      }
+    >
       <App />
     </AgencyGate>
   );

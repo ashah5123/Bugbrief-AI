@@ -19,7 +19,7 @@ export function Welcome() {
         </h1>
         <p>Choose where you belong. We’ll take you from there.</p>
         <div className="role-options">
-          <a className="role-option" href="/workspace">
+          <a className="role-option" href="/workspace?employee=choose">
             <span className="role-icon">
               <Building2 size={28} />
             </span>

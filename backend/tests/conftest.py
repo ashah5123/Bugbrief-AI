@@ -18,6 +18,7 @@ def client(tmp_path, monkeypatch):
     engine = make_engine(f'sqlite:///{tmp_path / "test.db"}')
     Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
+    monkeypatch.setattr(app.state, 'session_factory', factory)
     def db_override():
         with factory() as session:
             yield session

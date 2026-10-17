@@ -1,6 +1,6 @@
 """Erase report content and evidence; retain minimal quota/idempotency tombstones."""
 from sqlalchemy import select, delete
-from .models import Attachment, Clarification, CustomerSubmission, now
+from .models import Attachment, Clarification, CustomerSubmission, IssueProgress, IssueEvent, now
 from .jobs import ensure_idle
 
 
@@ -12,6 +12,8 @@ def erase_feedback(db, app, feedback):
         app.state.storage.delete(image.storage_key)
     db.execute(delete(Attachment).where(Attachment.feedback_id == feedback.id))
     db.execute(delete(Clarification).where(Clarification.feedback_id == feedback.id))
+    db.execute(delete(IssueEvent).where(IssueEvent.feedback_id == feedback.id))
+    db.execute(delete(IssueProgress).where(IssueProgress.feedback_id == feedback.id))
     customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == feedback.id))
     if customer:
         customer.reporter_name = ''

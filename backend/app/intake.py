@@ -15,6 +15,7 @@ from .evidence import attachments, clarifications, report_evidence, upload, dele
 from .jobs import ensure_idle, evidence_changed, run_job, usage, day
 from .deletion import erase_feedback
 from .customer_auth import current_customer
+from .workflow import progress_snapshot
 
 router = APIRouter()
 
@@ -85,6 +86,7 @@ def snapshot(db, item):
     return {'access_token': item.access_token, 'intake_token': link.token, 'reference': feedback.id[:8].upper(),
             'project_name': project.name, 'project_url': project.url, 'stage': item.stage, 'account_owned': bool(item.account_id),
             'reporter_name': item.reporter_name, 'text': feedback.text, 'page_url': feedback.page_url,
+            'workflow': progress_snapshot(db, feedback, public=True) if item.stage == 'submitted' else None,
             'context': item.context, 'processing_error': item.processing_error,
             'processing': bool(item.processing_started_at and (datetime.now(timezone.utc) - datetime.fromisoformat(item.processing_started_at)).total_seconds() < 300), 'submitted_at': item.submitted_at,
             'has_report': feedback.report is not None, 'questions': pending_questions(db, item),

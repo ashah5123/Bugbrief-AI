@@ -21,3 +21,9 @@ Role and management update: the root page now asks company/customer; `/workspace
 
 
 Customer-account update: `/customer` now offers New customer / Returning customer. Signup creates a persistent customer account; sign-in opens an account-filtered dashboard from any browser. A project invitation connects a project once. Account-owned report and image access requires the owner’s customer session; earlier guest reports can be explicitly saved to an account. Customer sessions do not authorize the company API. Migration `0005` retains existing reports, submissions, links and usage. No email delivery or password reset was added.
+
+
+Company entry update: new employees join using the workspace invitation code and their own name/email/password; existing employees sign in with email/password. Named employee sessions authorize the shared company workspace independently of customer sessions. Migration `0006` adds employee accounts and server-side sessions without changing existing customer/report data. Company employees retain the existing shared project/report permissions.
+
+
+Progress update: company users can assign employees, manage New / Needs information / In progress / Ready to retest / Resolved, and publish progress updates. Customers see their owner, current status and newest-first history in their account/return page. Workflow status/version is independent of the generated brief. Migration `0007` adds progress/history without changing existing records; deletion clears both. Customer tracking remains read-only and refreshes on focus/every 15 seconds.

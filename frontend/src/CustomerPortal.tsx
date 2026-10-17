@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { api } from "./types";
 import DeleteReportButton from "./DeleteReportButton";
+import { WorkflowBadge } from "./WorkflowPanel";
 import {
   savedSubmissions,
   forgetSubmission,
@@ -73,7 +74,18 @@ function Reports({
               <strong>{item.project_name}</strong>
               <small>
                 BB-{item.reference} ·{" "}
-                {item.stage === "submitted" ? "Sent to the company" : "Draft"}
+                {item.workflow ? (
+                  <WorkflowBadge workflow={item.workflow} />
+                ) : item.stage === "submitted" ? (
+                  "Sent to the company"
+                ) : (
+                  "Draft"
+                )}
+                {item.workflow?.assigned_to && (
+                  <span className="customer-assigned-name">
+                    Assigned to {item.workflow.assigned_to.name}
+                  </span>
+                )}
               </small>
             </div>
             <ArrowRight size={17} />
@@ -158,6 +170,16 @@ export default function CustomerPortal({
         setError(e.message);
       });
   }, []);
+  useEffect(() => {
+    if (!session?.authenticated) return;
+    const update = () => refresh().catch((e) => setError(e.message));
+    const timer = setInterval(update, 15000);
+    window.addEventListener("focus", update);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", update);
+    };
+  }, [session?.authenticated]);
   async function authenticate(event: FormEvent) {
     event.preventDefault();
     setError("");

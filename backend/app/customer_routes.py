@@ -9,6 +9,7 @@ from .models import CustomerSubmission, CustomerMembership, IntakeLink, Project,
 from .customer_auth import require_customer
 from .customer_projects import connect_project
 from .intake import active_link, snapshot
+from .workflow import progress_snapshot
 
 router = APIRouter(prefix='/api/customer')
 
@@ -23,7 +24,8 @@ def reports(account=Depends(require_customer), db: Session = Depends(get_db)):
         .where(CustomerSubmission.account_id == account.id, CustomerSubmission.stage != 'deleted', Feedback.deleted_at.is_(None))
         .order_by(CustomerSubmission.created_at.desc())).all()
     return [{'access_token': item.access_token, 'project_name': db.get(Project, db.get(IntakeLink, item.link_id).project_id).name,
-             'reference': item.feedback_id[:8].upper(), 'stage': item.stage} for item in records]
+             'reference': item.feedback_id[:8].upper(), 'stage': item.stage,
+             'workflow': progress_snapshot(db, db.get(Feedback, item.feedback_id), public=True, history=False) if item.stage == 'submitted' else None} for item in records]
 
 
 @router.get('/projects')

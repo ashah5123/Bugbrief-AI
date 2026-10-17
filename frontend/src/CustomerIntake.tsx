@@ -16,7 +16,8 @@ import {
   Trash2,
 } from "lucide-react";
 import ScreenshotReview from "./ScreenshotReview";
-import { api } from "./types";
+import { api, type IssueWorkflow } from "./types";
+import { CustomerProgress } from "./WorkflowPanel";
 import DeleteReportButton from "./DeleteReportButton";
 import { rememberSubmission, forgetSubmission } from "./customerStorage";
 
@@ -34,6 +35,7 @@ type Context = {
 type Record = {
   access_token: string;
   account_owned: boolean;
+  workflow: IssueWorkflow | null;
   intake_token: string;
   reference: string;
   project_name: string;
@@ -299,6 +301,19 @@ export default function CustomerIntake({
     }, 2000);
     return () => clearInterval(timer);
   }, [record?.access_token, record?.processing]);
+  useEffect(() => {
+    if (!record || record.stage !== "submitted" || deleted) return;
+    const refresh = () =>
+      api<Record>(`/public/submissions/${record.access_token}`)
+        .then((value) => adopt(value))
+        .catch((e) => setError(e.message));
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [record?.access_token, record?.stage, deleted]);
   function fields() {
     return {
       text,
@@ -963,7 +978,13 @@ export default function CustomerIntake({
               <CheckCheck size={33} />
             </span>
             <span className="eyebrow">ALL TOGETHER. ALL SENT.</span>
-            <h1>The team has your feedback.</h1>
+            <h1>
+              {record.workflow?.status === "resolved"
+                ? "Your issue is marked resolved."
+                : record.workflow?.status === "ready_to_retest"
+                  ? "A fix is ready to try."
+                  : "The team has your feedback."}
+            </h1>
             <p>
               Your words, screenshots and saved answers are together in the
               agency’s review inbox.
@@ -973,6 +994,7 @@ export default function CustomerIntake({
               <strong>BB-{record.reference}</strong>
               <small>{record.project_name}</small>
             </div>
+            {record.workflow && <CustomerProgress workflow={record.workflow} />}
             <div className="receipt-next">
               <span>01</span>
               <p>The agency reviews the details and any remaining unknowns.</p>

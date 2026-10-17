@@ -39,7 +39,7 @@ Stop only BugBrief’s backend, preserve `backend/.env`, and back up `data/bugbr
 .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Restart the backend with the command below. The migration upgrades to `0005` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
+Restart the backend with the command below. The migration upgrades to `0007` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
 
 ## Run
 
@@ -69,17 +69,35 @@ The local demo runs on this Mac. **A localhost link is not reachable by remote c
 
 To embed the button on a website you control, set the project's website URL in the sharing dialog and copy the generated script snippet before the site's closing body tag. The widget opens an isolated iframe; it does not replace fetch/console, scrape form fields, read cookies or record browsing history. Context messages are accepted only from the configured site origin or the explicitly labelled local demo preview. An ordinary standalone link cannot automatically know which other webpage had the issue; it asks for that URL.
 
+## Assign and track an issue
+
+1. Open a submitted customer issue or a company draft/report in the workspace. **Assignment & progress** is available even before a structured brief has been generated.
+2. Select an employee and set the issue status. The normal path is **New → In progress → Ready to retest → Resolved**. Use **Needs information** when the customer must supply more details; a public explanation is required. A resolved issue can be reopened into In progress.
+3. Add an optional **Customer-visible update** and save progress. Employee assignment and these updates are visible to the reporting customer; keep internal/private details out.
+4. Customers sign in to see their reports’ current status and assigned employee. Opening a sent report shows the latest update and progress history. The dashboard and open tracking page refresh every 15 seconds and on tab focus. Guest return links also show progress using the existing access rules.
+5. Filter the company inbox by progress and assigned employee. **Open issues** counts unresolved issues. Brief draft/review status remains separate from issue progress, so editing or regenerating a report does not reopen or reset its issue.
+
+Starting work, marking ready to retest, or resolving requires an assigned employee. Direct New → Resolved transitions are rejected. Progress uses a separate version so stale updates cannot overwrite another employee’s work, and it does not consume hosted-processing quota. Status changes are company-controlled; customer retest confirmation, two-way replies and email notifications are not part of this checkpoint. Ready to retest and Resolved describe company-reported progress, not automatic code changes or independent proof of a fix.
+
 ## Choose a role and manage reports
 
-The home page first asks whether you are with the company or are a customer. **Company workspace** opens `/workspace` behind the existing agency sign-in. **Customer portal** opens `/customer` with **New customer → Create an account** and **Returning customer → Sign in**. Customers register with a name, email and password, connect their project invitation once, and see their own projects/reports after signing in on any browser. Direct project links and embedded forms still go straight to the customer workflow. **Switch role** returns to the chooser; it does not grant workspace access or end an existing company session.
+The home page first asks whether you are with the company or are a customer. **Company workspace** first offers **New employee → Join the workspace** and **Existing employee → Employee sign in**. New employees create a name/email/password login using the workspace invitation code; returning employees need only their email and password. Successful sign-in opens `/workspace`. An already signed-in person can continue as the current employee or choose another employee flow. **Customer portal** opens `/customer` with **New customer → Create an account** and **Returning customer → Sign in**. Customers register with a name, email and password, connect their project invitation once, and see their own projects/reports after signing in on any browser. Direct project links and embedded forms still go straight to the customer workflow. **Switch role** returns to the chooser; it does not grant workspace access or end an existing company session.
 
 Customers can use **Delete my report** on their saved-report card or within a submission, including after sending it. Company users can open any report or draft and use **Delete report**. Both require a confirmation with a **Keep report** option. Deletion removes original text, report/proposal contents, answers, customer/browser details and uploaded image files from the active workspace, and closes the private return link. Reports cannot be restored through the interface. Minimal content-free identifiers and usage counters remain to enforce daily limits and prevent old save requests from recreating a deleted report; existing operator backups and any provider-held copies are outside this deletion operation.
 
 Account-owned reports require the matching customer session for reading, editing, screenshot access and deletion, even if someone else knows the report URL. Earlier guest reports remain available through their private capability and can be explicitly saved to a customer account. The dashboard lists only the signed-in account’s reports and connected projects; no public customer/project directory is exposed. Names and matching email addresses never establish report ownership.
 
+## Employee accounts
+
+From the opening page, choose **I’m with the company**, then **I’m a new employee** or **I’m an existing employee**. Employee signup requires a name, work email, password (12–128 characters), confirmation and **Workspace invitation code** from the owner. In this local setup the invitation is the existing workspace code in `data/agency-access.txt`. Joining without a valid code is rejected; customer project invitations and customer passwords do not authorize company access.
+
+Employees sign in with their own email/password thereafter. The workspace shows the signed-in employee’s name and email. **Employee accounts** in the sidebar returns to the chooser; **Sign out** revokes that employee session. Employee sessions last 12 hours and use hashed random tokens stored server-side, with HttpOnly/SameSite=Strict cookies (Secure on HTTPS). Password hashing reuses the customer scrypt implementation. Employee login/registration attempt limits are independent of the customer limits.
+
+**Workspace owner access** retains the existing code-based setup flow. No separate employee permission tiers, employee administration screen, password recovery or email verification are implemented. All invited employees can manage projects and delete any report in this single shared company workspace. A customer account with the same email remains a separate account and grants no employee access.
+
 ## Access and customer privacy
 
-The agency API requires a signed HttpOnly SameSite=Strict session cookie or a backend/operator `X-Agency-Key` header. Sessions expire after 12 hours; cookies use Secure on HTTPS. The auto-generated access code persists locally with owner-only file permissions. You may override it with `AGENCY_ACCESS_CODE` in the backend environment. Company staff still share one agency workspace/code; staff roles and agency-to-agency isolation remain unimplemented. Customer accounts use a separate session and never grant agency access.
+The agency API requires a signed HttpOnly SameSite=Strict session cookie or a backend/operator `X-Agency-Key` header. Sessions expire after 12 hours; cookies use Secure on HTTPS. The auto-generated access code persists locally with owner-only file permissions. You may override it with `AGENCY_ACCESS_CODE` in the backend environment. Company employees now have individual accounts and share one company workspace with the same project/report permissions. The workspace access code is needed once to join and remains available for owner setup/operator access. Granular staff roles and agency-to-agency isolation remain unimplemented. Customer accounts use a separate session and never grant agency access.
 
 Each project link can be revoked. Guest submissions receive a separate random private return link. Account-owned submissions appear in the customer dashboard without requiring a return link. Customers can read only their own submission and reviewed image files; public responses never include internal report/proposal JSON, other customer submissions, usage counters or credentials. Submitted entries become read-only to the customer, with an option to delete their report. Private capability paths are redacted from backend access logs and API responses are not cacheable.
 
@@ -91,6 +109,8 @@ Customer authentication uses salted scrypt password hashes and database-backed s
 
 ## What works
 
+- Employee assignment, independent issue statuses, customer-visible update history, progress filters and cross-tab stale-update checks.
+- New/existing employee entry, invitation-gated employee accounts, individual sign-in/out and named workspace sessions.
 - Customer account creation, sign-in/sign-out, projects and reports across browsers, plus recovery of earlier guest reports.
 - Customer-facing project forms, private resume links, idempotent saves, final receipts, project-link revocation and an embeddable Report a problem button.
 - Captured browser user agent, language, timezone, screen and viewport context; explicit issue-browser confirmation. No device model or historical interaction is inferred from this context. Optional customer names stay with the agency and are excluded from generation input.

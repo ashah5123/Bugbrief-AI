@@ -60,7 +60,19 @@ export type CustomerMetadata = {
     same_browser_confirmed?: boolean;
   };
 };
+export type IssueEmployee = { id: string; name: string };
+export type IssueWorkflow = {
+  status: string;
+  label: string;
+  assigned_to: { name: string } | null;
+  assigned_employee_id?: string | null;
+  version?: number;
+  updated_at: string;
+  events?: { id: string; label: string; note: string; created_at: string }[];
+  history_truncated?: boolean;
+};
 export type Feedback = {
+  workflow: IssueWorkflow;
   customer: CustomerMetadata | null;
   id: string;
   project_id: string;

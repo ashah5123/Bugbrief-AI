@@ -239,6 +239,7 @@ test("agency code protects workspace and project links can be revoked", async ({
   await expect(
     login.getByRole("heading", { name: "Your workspace. Your clients." }),
   ).toBeVisible();
+  await login.getByText("Workspace owner access", { exact: true }).click();
   await login
     .getByLabel("Workspace access code")
     .fill("e2e-agency-access-code");

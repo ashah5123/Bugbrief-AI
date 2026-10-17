@@ -4964,6 +4964,8 @@ code {
 }
 .sidebar a.nav-item {
   text-decoration: none;
+  display: flex;
+  align-items: center;
 }
 .customer-unavailable > a {
   margin-top: 20px;
@@ -5273,4 +5275,420 @@ code {
     align-items: flex-start;
     flex-direction: column;
   }
+}
+
+.employee-team-note {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  color: #819074;
+  padding: 0 2px;
+}
+.employee-team-note > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.employee-team-note p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.owner-access {
+  margin-top: 30px;
+  border-top: 1px solid #dce4d1;
+  padding-top: 20px;
+  color: #819074;
+}
+.owner-access summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  font-size: 12px;
+  width: fit-content;
+  color: #607b49;
+}
+.owner-access summary::before {
+  content: "▸";
+  font-size: 12px;
+}
+.owner-access[open] summary::before {
+  content: "▾";
+}
+.owner-access > p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 20px;
+}
+.owner-access form > label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #44603a;
+  margin-bottom: 10px;
+}
+.owner-access form > div {
+  display: flex;
+  gap: 12px;
+  max-width: 560px;
+}
+.owner-access input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #dbe2ce;
+  border-radius: 7px;
+  padding: 12px;
+  font: inherit;
+  font-size: 14px;
+  background: white;
+}
+.owner-access small {
+  display: block;
+  font-size: 11px;
+  line-height: 1.7;
+  margin: 14px 0 0;
+  max-width: 560px;
+}
+.owner-access button {
+  flex-shrink: 0;
+}
+.employee-identity {
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+}
+.employee-identity > strong {
+  font-weight: 600;
+  font-size: 12px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.employee-identity > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.employee-home > p {
+  max-width: 580px;
+}
+@media (max-width: 640px) {
+  .owner-access form > div {
+    flex-direction: column;
+  }
+  .owner-access input {
+    width: 100%;
+  }
+  .employee-team-note p {
+    font-size: 11px;
+  }
+}
+.employee-continue {
+  display: inline-flex;
+  text-decoration: none;
+  margin-top: 20px;
+}
+
+.workflow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: #edf2e6;
+  color: #637d4b;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.workflow-badge > span {
+  width: 5px;
+  height: 5px;
+  background: currentColor;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.workflow-needs_information {
+  background: #fcf1dc;
+  color: #98732f;
+}
+.workflow-in_progress {
+  background: #e8eff8;
+  color: #4b739b;
+}
+.workflow-ready_to_retest {
+  background: #eeeaf7;
+  color: #7b60a0;
+}
+.workflow-resolved {
+  background: #e4f1e5;
+  color: #3f7c4c;
+}
+.workflow-panel {
+  border: 1px solid #dae3cf;
+  border-radius: 12px;
+  background: #f7f9f2;
+  padding: 23px;
+  margin-bottom: 24px;
+  text-align: left;
+}
+.capture-card > .workflow-panel {
+  margin: 20px 24px;
+}
+.progress-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+}
+.progress-card-heading h3 {
+  font-size: 18px;
+  letter-spacing: -0.5px;
+  margin: 8px 0 0;
+}
+.workflow-panel > p {
+  font-size: 11px;
+  line-height: 1.8;
+  color: #7d8c70;
+  margin: 14px 0;
+}
+.workflow-panel form {
+  display: grid;
+  gap: 13px;
+}
+.workflow-panel label {
+  display: grid;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4c6942;
+}
+.workflow-panel label > span {
+  font-size: 10px;
+  font-weight: 400;
+  color: #89987b;
+}
+.workflow-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.workflow-panel select,
+.workflow-panel textarea {
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid #d7e1c9;
+  border-radius: 6px;
+  background: #fff;
+  padding: 11px;
+  color: #355331;
+  width: 100%;
+  min-width: 0;
+}
+.workflow-panel textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+.workflow-panel small {
+  font-size: 10px;
+  line-height: 1.7;
+  color: #89977d;
+}
+.workflow-panel small a {
+  color: #557a3c;
+}
+.workflow-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 15px;
+}
+.workflow-actions > span {
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #67894e;
+}
+.workflow-actions button {
+  font-size: 11px;
+}
+.progress-timeline {
+  border-top: 1px solid #dde6d1;
+  margin-top: 20px;
+  padding-top: 17px;
+  text-align: left;
+}
+.progress-timeline h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #5e7850;
+  margin: 0 0 16px;
+}
+.progress-timeline ol {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 280px;
+  overflow: auto;
+}
+.progress-timeline li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  position: relative;
+  padding: 0 0 18px 2px;
+}
+.timeline-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #9bb47c;
+  flex-shrink: 0;
+}
+.progress-timeline li:not(:last-child):before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: 3px;
+  width: 1px;
+  background: #d7e2cb;
+}
+.progress-timeline li > div {
+  min-width: 0;
+  flex: 1;
+}
+.progress-timeline strong {
+  display: block;
+  font-size: 11px;
+  color: #4e6a42;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.progress-timeline time {
+  display: block;
+  font-size: 9px;
+  color: #96a187;
+  margin-top: 5px;
+}
+.progress-timeline p {
+  font-size: 11px;
+  color: #78876b;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+}
+.customer-progress-card {
+  border: 1px solid #d7e2c8;
+  background: #f5f8ee;
+  border-radius: 12px;
+  padding: 22px;
+  margin: 24px 0;
+}
+.customer-progress-card > h2 {
+  font-size: 24px;
+  letter-spacing: -0.7px;
+  margin: 18px 0 10px;
+}
+.customer-progress-card > p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #78876b;
+}
+.customer-progress-card .eyebrow {
+  font-size: 8px;
+  letter-spacing: 1.1px;
+}
+.progress-owner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #6c8658;
+  margin-top: 15px;
+}
+.customer-progress-card .progress-card-heading {
+  flex-wrap: wrap;
+}
+.customer-assigned-name {
+  display: block;
+  margin-top: 7px;
+  color: #839573;
+}
+.customer-report-list small .workflow-badge {
+  margin-left: 4px;
+}
+.workflow-filters {
+  display: flex;
+  gap: 18px;
+  border-bottom: 1px solid #e6ebdc;
+  padding: 14px 24px;
+  flex-wrap: wrap;
+}
+.workflow-filters label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: #8b9a7d;
+}
+.workflow-filters select {
+  border: 1px solid #dce5d0;
+  background: #fff;
+  border-radius: 5px;
+  padding: 7px 10px;
+  font: inherit;
+  color: #607d49;
+  max-width: 180px;
+}
+@media (max-width: 640px) {
+  .workflow-panel {
+    padding: 18px;
+  }
+  .workflow-fields {
+    grid-template-columns: 1fr;
+  }
+  .capture-card > .workflow-panel {
+    margin: 18px;
+  }
+  .progress-card-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .workflow-filters {
+    padding: 13px 18px;
+    gap: 12px;
+  }
+  .workflow-filters label {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .workflow-filters select {
+    flex: 1;
+    max-width: 210px;
+  }
+  .customer-progress-card {
+    padding: 18px;
+  }
+  .workflow-actions {
+    flex-wrap: wrap;
+  }
+  .workflow-actions > button {
+    width: 100%;
+  }
+}
+.feedback-row .workflow-badge {
+  max-width: 100%;
+  white-space: normal;
+}
+.customer-assigned-name {
+  overflow-wrap: anywhere;
 }

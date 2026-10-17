@@ -124,3 +124,37 @@ class CustomerMembership(Base):
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
     link_id: Mapped[str] = mapped_column(ForeignKey('intake_links.id'))
     created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class EmployeeAccount(Base):
+    __tablename__ = 'employee_accounts'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    password_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class EmployeeSession(Base):
+    __tablename__ = 'employee_sessions'
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    account_id: Mapped[str] = mapped_column(ForeignKey('employee_accounts.id'), index=True)
+    expires_at: Mapped[float] = mapped_column(Float)
+
+
+class IssueProgress(Base):
+    __tablename__ = 'issue_progress'
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), primary_key=True)
+    status: Mapped[str] = mapped_column(String, default='new')
+    assigned_employee_id: Mapped[str | None] = mapped_column(ForeignKey('employee_accounts.id'), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class IssueEvent(Base):
+    __tablename__ = 'issue_events'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
+    label: Mapped[str] = mapped_column(String(250))
+    note: Mapped[str] = mapped_column(String(1000), default='')
+    created_at: Mapped[str] = mapped_column(String, default=now)

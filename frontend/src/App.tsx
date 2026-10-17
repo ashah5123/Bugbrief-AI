@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useContext,
   useRef,
   useState,
   type FormEvent,
@@ -39,9 +40,13 @@ import EvidencePanel from "./EvidencePanel";
 import ShareProject from "./ShareProject";
 import CustomerContext from "./CustomerContext";
 import DeleteReportButton from "./DeleteReportButton";
+import WorkflowPanel, { WorkflowBadge, workflowLabels } from "./WorkflowPanel";
+import { EmployeeContext } from "./AgencyGate";
 import {
   api,
   type Feedback,
+  type IssueWorkflow,
+  type IssueEmployee,
   type Health,
   type Project,
   type Report,
@@ -152,12 +157,17 @@ function Modal({
 }
 
 export default function App() {
+  const employee = useContext(EmployeeContext);
+  const userInitial = employee?.name.slice(0, 1).toUpperCase() || "W";
   const [manualOpen, setManualOpen] = useState(() =>
     Boolean(localStorage.getItem("bugbrief-active-id")),
   );
   const [sharing, setSharing] = useState<string | null>(null);
   const [view, setView] = useState<View>("overview");
   const [projects, setProjects] = useState<Project[]>([]);
+  const [employees, setEmployees] = useState<IssueEmployee[]>([]);
+  const [progressFilter, setProgressFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [items, setItems] = useState<Feedback[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
   const [draft, setDraft] = useState<Draft>(readDraft);
@@ -222,14 +232,16 @@ export default function App() {
   }, [modal, !!selected]);
 
   async function refresh() {
-    const [p, f, h] = await Promise.all([
+    const [p, f, h, e] = await Promise.all([
       api<Project[]>("/projects"),
       api<Feedback[]>("/feedback"),
       api<Health>("/health"),
+      api<IssueEmployee[]>("/employees"),
     ]);
     setProjects(p);
     setItems(f);
     setHealth(h);
+    setEmployees(e);
     setDraft((d) =>
       d.project_id || !p.length ? d : { ...d, project_id: p[0].id },
     );
@@ -339,6 +351,11 @@ export default function App() {
       (view !== "reports" || i.report) &&
       (projectFilter === "all" || i.project_id === projectFilter) &&
       (statusFilter === "all" || i.status === statusFilter) &&
+      (progressFilter === "all" || i.workflow.status === progressFilter) &&
+      (assigneeFilter === "all" ||
+        (assigneeFilter === "unassigned"
+          ? !i.workflow.assigned_employee_id
+          : i.workflow.assigned_employee_id === assigneeFilter)) &&
       `${i.text} ${i.report?.title || ""}`
         .toLowerCase()
         .includes(search.toLowerCase()),
@@ -348,6 +365,18 @@ export default function App() {
     setMobileNav(false);
     setSearch("");
     setStatusFilter("all");
+    setProgressFilter("all");
+    setAssigneeFilter("all");
+  }
+  function updateWorkflow(feedbackId: string, value: IssueWorkflow) {
+    setItems((existing) =>
+      existing.map((item) =>
+        item.id === feedbackId ? { ...item, workflow: value } : item,
+      ),
+    );
+    setSelected((existing) =>
+      existing?.id === feedbackId ? { ...existing, workflow: value } : existing,
+    );
   }
   function newFeedback() {
     setManualOpen(true);
@@ -508,9 +537,9 @@ export default function App() {
           </span>
         </a>
         <div className="workspace-label">
-          <span className="workspace-avatar">Y</span>
+          <span className="workspace-avatar">W</span>
           <div>
-            Your workspace<small>Personal workspace</small>
+            Company workspace<small>Shared team workspace</small>
           </div>
           <span className="workspace-plan">FREE</span>
         </div>
@@ -574,6 +603,10 @@ export default function App() {
           )}
         </div>
         <div className="sidebar-bottom">
+          <a className="nav-item" href="/workspace?employee=choose">
+            <ArrowRight size={18} />
+            <span>Employee accounts</span>
+          </a>
           <a className="nav-item" href="/">
             <ArrowRight size={18} />
             <span>Switch role</span>
@@ -600,9 +633,10 @@ export default function App() {
             <ArrowUpRight size={14} />
           </button>
           <div className="user-row">
-            <span className="user-avatar">Y</span>
-            <div>
-              Your workspace<small>Local development</small>
+            <span className="user-avatar">{userInitial}</span>
+            <div className="employee-identity">
+              <strong>{employee?.name || "Workspace owner"}</strong>
+              <small>{employee?.email || "Local development"}</small>
             </div>
             <span className="online-dot" title="Local workspace" />
           </div>
@@ -644,14 +678,23 @@ export default function App() {
             <button
               className="text-button agency-signout"
               onClick={async () => {
-                await api("/auth/logout", "POST", {});
-                location.reload();
+                try {
+                  await api("/auth/logout", "POST", {});
+                  location.assign("/workspace");
+                } catch (e) {
+                  setError((e as Error).message);
+                }
               }}
             >
               Sign out
             </button>
             <span className="top-divider" />
-            <span className="user-avatar top-avatar">Y</span>
+            <span
+              className="user-avatar top-avatar"
+              title={employee?.name || "Workspace owner"}
+            >
+              {userInitial}
+            </span>
           </div>
         </header>
         <main>
@@ -766,13 +809,13 @@ export default function App() {
                   note="From feedback to a clear brief"
                 />
                 <Stat
-                  label="Ready for review"
+                  label="Open issues"
                   value={
-                    items.filter((i) => i.status === "review" || !!i.customer)
+                    items.filter((item) => item.workflow.status !== "resolved")
                       .length
                   }
                   icon={<FileCheck2 size={19} />}
-                  note="A human touch before the fix"
+                  note="Still moving toward a resolution"
                 />
                 <Stat
                   label="Projects"
@@ -965,6 +1008,17 @@ export default function App() {
                       </span>
                     </label>
                   </div>
+                  {activeFeedback && (
+                    <WorkflowPanel
+                      key={activeFeedback.id}
+                      feedbackId={activeFeedback.id}
+                      workflow={activeFeedback.workflow}
+                      employees={employees}
+                      onChange={(value) =>
+                        updateWorkflow(activeFeedback.id, value)
+                      }
+                    />
+                  )}
                   <div className="capture-footer">
                     {activeFeedback ? (
                       <DeleteReportButton
@@ -1160,13 +1214,13 @@ export default function App() {
                       className={statusFilter === "draft" ? "selected" : ""}
                       onClick={() => setStatusFilter("draft")}
                     >
-                      Drafts
+                      Brief drafts
                     </button>
                     <button
                       className={statusFilter === "review" ? "selected" : ""}
                       onClick={() => setStatusFilter("review")}
                     >
-                      In review
+                      Briefs in review
                     </button>
                   </div>
                   <div className="list-filters">
@@ -1192,6 +1246,43 @@ export default function App() {
                       ))}
                     </select>
                   </div>
+                </div>
+                <div className="workflow-filters">
+                  <label>
+                    Progress
+                    <select
+                      aria-label="Filter by issue progress"
+                      value={progressFilter}
+                      onChange={(event) =>
+                        setProgressFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All progress</option>
+                      {Object.entries(workflowLabels).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Assigned employee
+                    <select
+                      aria-label="Filter by assigned employee"
+                      value={assigneeFilter}
+                      onChange={(event) =>
+                        setAssigneeFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">All employees</option>
+                      <option value="unassigned">Unassigned</option>
+                      {employees.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 <div className="table-header">
                   <span>FEEDBACK / REPORT</span>
@@ -1236,6 +1327,8 @@ export default function App() {
                                 ? item.report.category
                                 : "Original client feedback"}
                               {item.error && " · AI processing paused"}
+                              {" · "}
+                              {item.workflow.assigned_to?.name || "Unassigned"}
                             </small>
                           </span>
                         </div>
@@ -1244,14 +1337,7 @@ export default function App() {
                           {projectName(item.project_id)}
                         </span>
                         <span>
-                          <span className={`status-pill ${item.status}`}>
-                            <span />
-                            {item.customer && item.status === "draft"
-                              ? "Needs a brief"
-                              : item.status === "review"
-                                ? "In review"
-                                : "Draft"}
-                          </span>
+                          <WorkflowBadge workflow={item.workflow} />
                         </span>
                         <span className="date-cell">
                           {dateLabel(item.created_at)}
@@ -1270,7 +1356,9 @@ export default function App() {
                     <h3>
                       {search ||
                       statusFilter !== "all" ||
-                      projectFilter !== "all"
+                      projectFilter !== "all" ||
+                      progressFilter !== "all" ||
+                      assigneeFilter !== "all"
                         ? "No matches just yet."
                         : view === "reports"
                           ? "Your first clear brief starts here."
@@ -1279,7 +1367,9 @@ export default function App() {
                     <p>
                       {search ||
                       statusFilter !== "all" ||
-                      projectFilter !== "all"
+                      projectFilter !== "all" ||
+                      progressFilter !== "all" ||
+                      assigneeFilter !== "all"
                         ? "Try a different search or filter."
                         : view === "reports"
                           ? "Generate a report from client feedback, then make it your own."
@@ -1290,11 +1380,15 @@ export default function App() {
                       onClick={
                         search ||
                         statusFilter !== "all" ||
-                        projectFilter !== "all"
+                        projectFilter !== "all" ||
+                        progressFilter !== "all" ||
+                        assigneeFilter !== "all"
                           ? () => {
                               setSearch("");
                               setStatusFilter("all");
                               setProjectFilter("all");
+                              setProgressFilter("all");
+                              setAssigneeFilter("all");
                             }
                           : () => {
                               if (!projects.length) setModal("project");
@@ -1308,7 +1402,9 @@ export default function App() {
                     >
                       {search ||
                       statusFilter !== "all" ||
-                      projectFilter !== "all"
+                      projectFilter !== "all" ||
+                      progressFilter !== "all" ||
+                      assigneeFilter !== "all"
                         ? "Clear filters"
                         : projects.length
                           ? "Try with example feedback"
@@ -1580,6 +1676,13 @@ export default function App() {
                   {error}
                 </div>
               )}
+              <WorkflowPanel
+                key={selected.id}
+                feedbackId={selected.id}
+                workflow={selected.workflow}
+                employees={employees}
+                onChange={(value) => updateWorkflow(selected.id, value)}
+              />
               {selected.proposal && (
                 <div className="proposal-banner">
                   <Sparkles size={19} />

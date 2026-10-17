@@ -137,3 +137,85 @@ with TestClient(app) as c:
 """
     for code in (create, read):
         subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+
+
+def test_employee_account_and_session_survive_restart(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{tmp_path/"employees.db"}',
+           'EMPLOYEE_MANIFEST': str(tmp_path/'employee-manifest.json'), 'AGENCY_ACCESS_CODE': 'employee-restart-code'}
+    subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', 'head'],
+                   cwd=root, env=env, check=True, capture_output=True)
+    create = """
+import json,os
+from fastapi.testclient import TestClient
+from app.main import app
+from app.employee_auth import COOKIE
+with TestClient(app) as c:
+    assert c.post('/api/auth/employee/register',json={'name':'Persistent employee','email':'employee@example.com','password':'Persistent employee phrase 42!','workspace_code':'employee-restart-code'}).status_code==201
+    assert c.post('/api/projects',json={'name':'Employee shared project'}).status_code==201
+    open(os.environ['EMPLOYEE_MANIFEST'],'w').write(json.dumps({'cookie':c.cookies.get(COOKIE)}))
+"""
+    read = """
+import json,os
+from fastapi.testclient import TestClient
+from app.main import app
+from app.employee_auth import COOKIE
+manifest=json.load(open(os.environ['EMPLOYEE_MANIFEST']))
+with TestClient(app) as c:
+    assert c.get('/api/projects').status_code==401
+    c.cookies.set(COOKIE,manifest['cookie'])
+    assert c.get('/api/auth/session').json()['employee']['name']=='Persistent employee'
+    assert c.get('/api/projects').json()[0]['name']=='Employee shared project'
+    assert c.get('/api/customer/reports').status_code==401
+    assert c.post('/api/auth/logout').status_code==200
+    c.cookies.set(COOKIE,manifest['cookie'])
+    assert c.get('/api/projects').status_code==401
+    assert c.post('/api/auth/employee/login',json={'email':'employee@example.com','password':'Persistent employee phrase 42!'}).status_code==200
+    assert c.get('/api/projects').status_code==200
+"""
+    for code in (create, read):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+
+
+def test_issue_progress_and_customer_history_survive_restart(tmp_path):
+    root = Path(__file__).resolve().parents[2]
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{tmp_path/"progress.db"}',
+           'PROGRESS_MANIFEST': str(tmp_path/'progress-manifest.json'), 'AGENCY_ACCESS_CODE': 'progress-restart-code'}
+    subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', 'head'], cwd=root, env=env, check=True, capture_output=True)
+    create = """
+import os,json
+from fastapi.testclient import TestClient
+from app.main import app
+from app.db import SessionLocal
+from app.models import EmployeeAccount
+with SessionLocal() as db:
+    employee=EmployeeAccount(name='Persistent assignee',email='progress@example.com',password_hash='unused')
+    db.add(employee);db.commit();employee_id=employee.id
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='progress-restart-code'
+    project=c.post('/api/projects',json={'name':'Progress project'}).json()
+    link=c.post('/api/projects/'+project['id']+'/intake-link',json={}).json()['token']
+    customer=c.post('/api/public/intake/'+link+'/submissions',json={'client_nonce':'persistent-progress-nonce-123','text':'Keep this progress.'}).json()
+    c.post('/api/public/submissions/'+customer['access_token']+'/submit',json={})
+    feedback=c.get('/api/feedback').json()[0]
+    assert c.patch('/api/feedback/'+feedback['id']+'/workflow',json={'version':0,'status':'in_progress','assigned_employee_id':employee_id,'note':'Persist this public update.'}).status_code==200
+    open(os.environ['PROGRESS_MANIFEST'],'w').write(json.dumps({'id':feedback['id'],'token':customer['access_token']}))
+"""
+    read = """
+import os,json
+from fastapi.testclient import TestClient
+from app.main import app
+manifest=json.load(open(os.environ['PROGRESS_MANIFEST']))
+with TestClient(app) as c:
+    public=c.get('/api/public/submissions/'+manifest['token']).json()['workflow']
+    assert public['status']=='in_progress' and public['assigned_to']['name']=='Persistent assignee'
+    assert public['events'][-1]['note']=='Persist this public update.'
+    assert 'version' not in public and 'assigned_employee_id' not in public
+    c.headers['X-Agency-Key']='progress-restart-code'
+    private=c.get('/api/feedback/'+manifest['id']+'/workflow').json()
+    assert private['version']==1 and private['status']=='in_progress'
+    assert c.delete('/api/feedback/'+manifest['id']).status_code==200
+    assert c.get('/api/public/submissions/'+manifest['token']).status_code==404
+"""
+    for code in (create, read):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)

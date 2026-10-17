@@ -8,7 +8,10 @@ import os
 import re
 import secrets
 import time
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response, Depends
+from sqlalchemy.orm import Session
+from .db import get_db
+from .employee_auth import current_employee, end_employee_session, profile, COOKIE as EMPLOYEE_COOKIE
 from pydantic import BaseModel, Field
 from .config import settings
 
@@ -40,6 +43,8 @@ def signed_session():
     return payload + '.' + signature
 
 def agency_allowed(request):
+    if current_employee(request) is not None:
+        return True
     secret = access_code()
     provided = request.headers.get('x-agency-key', '')
     if provided and hmac.compare_digest(provided.encode(), secret.encode()):
@@ -55,7 +60,10 @@ class LoginIn(BaseModel):
     code: str = Field(min_length=1, max_length=256)
 
 @router.get('/session')
-def session(request: Request):
+def session(request: Request, db: Session = Depends(get_db)):
+    employee = current_employee(request, db)
+    if employee:
+        return {'authenticated': True, 'employee': profile(employee)}
     return {'authenticated': bool(agency_allowed(request))}
 
 @router.post('/login')
@@ -72,8 +80,11 @@ async def login(data: LoginIn, request: Request, response: Response):
     return {'authenticated': True}
 
 @router.post('/logout')
-async def logout(response: Response):
+async def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+    end_employee_session(request, db)
+    db.commit()
     response.delete_cookie(COOKIE, path='/')
+    response.delete_cookie(EMPLOYEE_COOKIE, path='/')
     return {'authenticated': False}
 
 class CapabilityLogFilter(logging.Filter):

@@ -12,6 +12,7 @@ from .db import get_db
 from .models import Attachment, Clarification, Feedback, CustomerSubmission, now
 from .schemas import ClarificationIn, GenerateIn
 from .jobs import ensure_idle, evidence_changed, run_job
+from .workflow import progress_snapshot
 
 router = APIRouter(prefix='/api/feedback')
 MAX_BYTES = 2 * 1024 * 1024
@@ -33,6 +34,7 @@ def clarifications(db, feedback_id):
 def serialize(item, db=None):
     result = {c.name: getattr(item, c.name) for c in item.__table__.columns if c.name != 'storage_key'}
     if isinstance(item, Feedback) and db is not None:
+        result['workflow'] = progress_snapshot(db, item)
         result['attachments'] = [serialize(a) for a in attachments(db, item.id)]
         result['clarifications'] = [serialize(c) for c in clarifications(db, item.id)]
         customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))

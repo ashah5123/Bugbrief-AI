@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from .config import settings
-from .db import get_db
+from .db import get_db, SessionLocal
 from .models import Project, Feedback, CustomerSubmission, now
 from .schemas import ProjectIn, FeedbackIn, SaveReport, GenerateIn, ApplyProposal
 from .providers.gemini import GeminiGenerator, GeminiImageAnalyzer
@@ -19,6 +19,8 @@ from .intake import router as intake_router
 from .deletion import erase_feedback
 from .customer_auth import router as customer_auth_router
 from .customer_routes import router as customer_router
+from .employee_auth import router as employee_router
+from .workflow import router as workflow_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -31,11 +33,14 @@ app.state.image_analyzer = GeminiImageAnalyzer(settings)
 app.state.storage = LocalStorage(settings.attachments_dir)
 app.state.job_lock = asyncio.Lock()
 app.state.active_feedback_id = None
+app.state.session_factory = SessionLocal
 app.include_router(router)
 app.include_router(auth_router)
 app.include_router(intake_router)
 app.include_router(customer_auth_router)
 app.include_router(customer_router)
+app.include_router(employee_router)
+app.include_router(workflow_router)
 
 @app.middleware('http')
 async def local_write_guard(request: Request, call_next):

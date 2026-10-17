@@ -1,3 +1,22 @@
+# Assignment and progress verification — 16 October 2026
+
+- **158 backend checks passed** (19.68 seconds); the 16 workflow-specific checks were rerun after final input validation and passed. Covers safe defaults without GET mutations, employee/company authorization, customer read-only views and minimal public fields, real employee assignments, allowed/invalid transitions, required owner/information notes, stale versions, no-op idempotency, preserved report/evidence versions, deletion of progress/history and independent-process restart persistence.
+- **34 desktop/mobile Playwright checks passed** in one full run (1.1 minutes). New scenarios submit a real customer issue to the disposable backend, assign an employee, advance statuses through resolution, verify the customer account summary/history, filter by assignee/progress, clear filters and preserve unsaved report text through workflow saves and stale-update recovery. Browser tests make no hosted model calls. Final progress presentation checks additionally cover newest-first history and retest/resolved headlines.
+- **Production build passed** after final TypeScript and Vite checks (approximately 104 KiB gzipped JavaScript). All four focused progress browser scenarios also passed after the final timeline/headline changes.
+- Local database backed up at `data/backups/before-issue-progress-20261017T021126Z.db` (UTC filename), then upgraded to **0007**. All existing rows in prior tables were compared and preserved. Local read checks confirmed progress/defaults and an employee directory without email fields; both existing demo logins were verified. No real report status or content was changed by the smoke check.
+- Customer mobile progress and company report-editor layouts were rendered and inspected. Screenshots remain ignored under `test-results/`.
+
+Issue progress is company-controlled and separate from brief review status. Customer replies, retest confirmation and notification delivery remain future work; displayed resolution is the company’s status update.
+
+# Employee-account verification — 16 October 2026
+
+- **141 backend checks passed** (22.22 seconds), including invitation-gated employee creation, credential validation/uniqueness/hashing, generic login failures, cookie hashing/expiry, logout and session revocation, owner-cookie fallback clearing, HTTPS cookies, origin checks, independent attempt limits, customer/employee identity separation with matching emails, shared project/report permissions and employee session persistence across independent processes.
+- **30 desktop/mobile browser checks passed** in one full run (1.1 minutes). New checks create an employee using an invitation, reject mismatched passwords and an invalid invitation, sign out, sign in from a fresh browser using email/password only, verify the named identity and manage a workspace report. Existing customer/account/guest/report/screenshot checks remained passing. Browser tests use disposable SQLite and make no hosted model calls.
+- **Production build passed** after TypeScript and Vite compilation (approximately 102 KiB gzipped JavaScript). Employee-entry screenshots were visually inspected; final menu captures disable transition animations.
+- Local database backed up to `data/backups/before-employee-accounts-20261017T015330Z.db` (UTC filename), then upgraded to **0006**. Existing projects, reports, customer accounts/sessions, submissions, links, memberships and usage were compared before/after migration and preserved. No sample employees were created in the operator database.
+
+Employees share this single company workspace and its existing permissions. Invitation/code-based owner access remains available for setup. No permission tiers, email verification, password recovery or employee administration screen were added.
+
 # Customer-account verification — 16 October 2026
 
 - **126 backend checks passed** (11.85 seconds). Covers salted password storage, normalized/unique credentials, validation, generic failed-login responses, login/signup attempt limits, hashed HttpOnly session tokens, expiry, logout/revocation, HTTPS cookies, origin checks, company/customer session separation, account-scoped report/project lists, report/image mutation isolation, explicit guest claims, revoked invitations, and account/session persistence across independent processes.
