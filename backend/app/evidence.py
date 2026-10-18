@@ -34,6 +34,8 @@ def clarifications(db, feedback_id):
 def serialize(item, db=None):
     result = {c.name: getattr(item, c.name) for c in item.__table__.columns if c.name != 'storage_key'}
     if isinstance(item, Feedback) and db is not None:
+        from .duplicates import group_summary
+        result['duplicate_group'] = group_summary(db, item.id)
         result['workflow'] = progress_snapshot(db, item)
         result['attachments'] = [serialize(a) for a in attachments(db, item.id)]
         result['clarifications'] = [serialize(c) for c in clarifications(db, item.id)]

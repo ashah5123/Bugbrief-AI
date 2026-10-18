@@ -1,3 +1,4 @@
+import { DuplicateBadge } from "./DuplicateReports";
 import { useState } from "react";
 import { ArrowRight, CheckCheck, Inbox } from "lucide-react";
 import type { Feedback, Project } from "./types";
@@ -30,6 +31,7 @@ export default function MyWork({ employeeId, items, projects, today, open, inbox
     {visible.length ? <div className="my-work-list">{visible.map(item => <button className="my-work-item" data-work-report-id={item.id} key={item.id} onClick={() => open(item)}>
       <div className="my-work-item-heading"><strong>{item.report?.title || item.text.slice(0, 110) || "Untitled feedback"}</strong><WorkflowBadge workflow={item.workflow} /></div>
       <span className="my-work-project">{projects.find(project => project.id === item.project_id)?.name || "Project"}{item.customer?.reporter_name ? ` · ${item.customer.reporter_name}` : ""}</span>
+      <DuplicateBadge value={item.duplicate_group} />
       <TriageBadges workflow={item.workflow} today={today} />
       <NextStep workflow={item.workflow} audience="company" hasCustomer={!!item.customer} compact />
       <span className="work-open">Open report <ArrowRight size={14} /></span>

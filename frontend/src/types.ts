@@ -79,6 +79,7 @@ export type IssueWorkflow = {
   history_truncated?: boolean;
 };
 export type Feedback = {
+  duplicate_group?: { main_feedback_id: string; count: number; is_main: boolean } | null;
   workflow: IssueWorkflow;
   customer: CustomerMetadata | null;
   id: string;

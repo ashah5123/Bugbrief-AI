@@ -56,10 +56,12 @@ export default function Conversation({
     void refresh();
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
+    window.addEventListener("bugbrief-reports-updated", refresh);
     return () => {
       active = false;
       clearInterval(timer);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("bugbrief-reports-updated", refresh);
     };
   }, [endpoint]);
   return (

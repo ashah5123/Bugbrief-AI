@@ -1,3 +1,4 @@
+import DuplicateReports from "./DuplicateReports";
 import NextStep from "./NextStep";
 import TriagePanel from "./TriagePanel";
 import Conversation from "./Conversation";
@@ -367,6 +368,7 @@ export default function WorkflowPanel({
         </form>
         <ProgressTimeline workflow={workflow} />
       </section>
+      <DuplicateReports key={`duplicates-${feedbackId}`} feedbackId={feedbackId} employees={employees} onWorkflow={onChange} />
       <Conversation key={feedbackId} feedbackId={feedbackId} />
     </>
   );

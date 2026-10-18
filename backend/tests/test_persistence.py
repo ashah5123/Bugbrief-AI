@@ -373,3 +373,48 @@ with TestClient(app) as c:
     assert c.get('/api/projects').json()[0]['team_name']=='Persistent support team'
 """):
         subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+
+
+def test_duplicate_groups_upgrade_restart_and_retry_safe_updates(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    path = tmp_path / 'duplicates.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{path}', 'AGENCY_ACCESS_CODE': 'duplicates-restart-owner-code', 'MAIL_MODE': 'local'}
+    def migrate(version):
+        subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', version], cwd=root, env=env, check=True, capture_output=True)
+    migrate('0012')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at) VALUES ('p','Preserved project','','old')")
+        for fid in ('main','child'):
+            db.execute("INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES (?,'p','Preserved original feedback','','','','draft',3,'old','old')", (fid,))
+    migrate('head')
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT text,version FROM feedback').fetchall() == [('Preserved original feedback',3)]*2
+        assert db.execute('SELECT count(*) FROM duplicate_groups').fetchone()[0] == 0
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    write = """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='duplicates-restart-owner-code'
+    assert c.post('/api/feedback/child/duplicates',json={'main_feedback_id':'main','version':0}).status_code==200
+    data={'version':1,'request_id':'f8135995-58e4-49fe-8b58-62d36628c302','body':'Persistent shared update'}
+    assert c.post('/api/feedback/main/duplicates/updates',json=data).status_code==200
+"""
+    read = """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='duplicates-restart-owner-code'
+    group=c.get('/api/feedback/main/duplicates').json()['group']
+    assert group['version']==2 and len(group['members'])==2
+    data={'version':1,'request_id':'f8135995-58e4-49fe-8b58-62d36628c302','body':'Persistent shared update'}
+    assert c.post('/api/feedback/main/duplicates/updates',json=data).json()['updated_count']==2
+    for fid in ('main','child'):
+        assert len(c.get('/api/feedback/'+fid+'/messages').json())==1
+    assert c.delete('/api/feedback/main').status_code==200
+    assert c.get('/api/feedback/child/duplicates').json()['group'] is None
+    assert c.get('/api/feedback/child').json()['text']=='Preserved original feedback'
+"""
+    for code in (write, read):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)

@@ -232,3 +232,28 @@ class OwnerSession(Base):
     token_hash: Mapped[str] = mapped_column(String, primary_key=True)
     credential_hash: Mapped[str] = mapped_column(String)
     expires_at: Mapped[float] = mapped_column(Float)
+
+
+class DuplicateGroup(Base):
+    __tablename__ = 'duplicate_groups'
+    work_status: Mapped[str] = mapped_column(String, default='new', server_default='new')
+    assigned_employee_id: Mapped[str | None] = mapped_column(ForeignKey('employee_accounts.id'), nullable=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    main_feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), unique=True)
+    version: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class DuplicateMember(Base):
+    __tablename__ = 'duplicate_members'
+    feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey('duplicate_groups.id'), index=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class DuplicateAction(Base):
+    __tablename__ = 'duplicate_actions'
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey('duplicate_groups.id'), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    count: Mapped[int] = mapped_column(Integer)

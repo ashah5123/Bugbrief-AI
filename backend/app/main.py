@@ -22,6 +22,7 @@ from .customer_routes import router as customer_router
 from .employee_auth import router as employee_router
 from .workflow import router as workflow_router
 from .conversation import router as conversation_router
+from .duplicates import router as duplicates_router
 from .account_management import router as account_management_router
 from .project_access import router as access_router, company_project_ids, require_company_project
 from .employee_auth import current_employee
@@ -59,6 +60,7 @@ app.include_router(customer_router)
 app.include_router(employee_router)
 app.include_router(workflow_router)
 app.include_router(conversation_router)
+app.include_router(duplicates_router)
 app.include_router(account_management_router)
 app.include_router(access_router)
 app.include_router(notification_router)
@@ -174,6 +176,9 @@ async def edit_feedback(feedback_id: str, data: FeedbackIn, request: Request, db
     if not db.get(Project, data.project_id):
         raise HTTPException(404, 'Project not found')
     if item.project_id != data.project_id:
+        from .duplicates import group_for
+        if group_for(db, item.id):
+            raise HTTPException(409, 'Unlink this report from its shared issue before moving it to another project.')
         progress = db.get(IssueProgress, item.id)
         if progress and progress.assigned_employee_id:
             employee = db.get(EmployeeAccount, progress.assigned_employee_id)

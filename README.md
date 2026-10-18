@@ -79,6 +79,16 @@ To embed the button on a website you control, set the project's website URL in t
 
 Starting work, marking ready to retest, or resolving requires an assigned employee. Direct New → Resolved transitions are rejected. Progress uses a separate version so stale updates cannot overwrite another employee’s work, and it does not consume hosted-processing quota. Employees manage progress; customers can confirm or reject the current ready-to-retest fix. Progress does not automatically modify application code. In-app notifications and optional email alerts now cover replies, progress updates and retest requests.
 
+## Duplicate reports and shared fixes
+
+Open an individual report and use **Linked reports** to find a main report in the same project, then choose **Link as duplicate**. Groups are flat and contain up to 50 reports; unlink before changing the main report or moving a linked report to another project. Company list cards identify shared issues and linked duplicates. Linking itself does not copy evidence, messages, assignments or status.
+
+On the **main report**, choose a **Shared fix owner** and write a customer-safe update, then **Start shared work**. When ready, explain what changed and the steps to repeat, then **Request shared retest**. These actions update the group's open reports together. Each report keeps its own priority, deadline and evidence, and reports already resolved remain resolved. The shared fix has its own state so the main report's customer can confirm first while work continues for other customers. New duplicates join without automatically changing their progress; publish another shared action when they should receive the fix.
+
+**Send an update to every linked report** posts only the message you write, separately to each report, including resolved reports. It never copies existing customer replies or private notes, and does not change status. Customers see only their own report and conversation, receive their normal per-report notifications, and confirm or reject a retest independently. Shared messages and work actions use request identifiers so retrying the same request does not post duplicate updates or reset retests.
+
+Individual progress controls still affect only the report being viewed. Group and report versions reject stale changes. **Unlink this report** detaches a duplicate; **Unlink all reports** on the main report dissolves the group. Both preserve conversations and progress. Deleting a main report also unlinks the group while preserving the remaining reports. Deleting a duplicate removes only that report; a group with only its main report left is removed automatically. Group membership and main-report metadata are company-only.
+
 ## Personal work and customer next steps
 
 Named employees land on **My work**, with queues for their assigned unresolved reports, overdue work, customers awaiting a public reply, and fixes awaiting retest. Each card shows the next action and opens the report. **Open project inbox** leads employees with an empty queue to their authorized projects; the workspace owner keeps the overview. Existing permissions still control the API. A **Continue your draft** button restores feedback left in the same browser/account.

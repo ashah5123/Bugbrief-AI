@@ -1,3 +1,4 @@
+import { DuplicateBadge } from "./DuplicateReports";
 import MyWork from "./MyWork";
 import NextStep from "./NextStep";
 import { compareTriage, customerKey, overdue, priorityLabels, TriageBadges, todayLocal } from "./triage";
@@ -361,10 +362,12 @@ export default function App() {
     const interval = setInterval(reload, 15000);
     document.addEventListener("visibilitychange", reload);
     window.addEventListener("focus", reload);
+    window.addEventListener("bugbrief-reports-updated", reload);
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", reload);
       window.removeEventListener("focus", reload);
+      window.removeEventListener("bugbrief-reports-updated", reload);
     };
   }, []);
   const reports = items.filter((i) => i.report);
@@ -1476,6 +1479,7 @@ export default function App() {
                               {" · "}
                               {item.workflow.assigned_to?.name || "Unassigned"}
                             </small>
+                            <DuplicateBadge value={item.duplicate_group} />
                             <TriageBadges workflow={item.workflow} today={today} />
                             <NextStep workflow={item.workflow} audience="company" hasCustomer={!!item.customer} compact />
                           </span>

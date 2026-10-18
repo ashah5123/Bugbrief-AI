@@ -18,6 +18,8 @@ def erase_feedback(db, app, feedback):
     db.execute(delete(ReportMessage).where(ReportMessage.feedback_id == feedback.id))
     db.execute(delete(IssueEvent).where(IssueEvent.feedback_id == feedback.id))
     db.execute(delete(IssueProgress).where(IssueProgress.feedback_id == feedback.id))
+    from .duplicates import detach_for_deletion
+    detach_for_deletion(db, feedback.id)
     customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == feedback.id))
     if customer:
         customer.reporter_name = ''

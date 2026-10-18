@@ -6123,3 +6123,28 @@ code {
 
 .customer-start > .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
 .customer-signed-in { margin-top: 32px; }
+
+/* Shared fixes keep customer conversations and confirmation separate. */
+.duplicate-panel { margin-top: 20px; }
+.duplicate-panel form { display: grid; gap: 12px; margin-top: 16px; }
+.duplicate-panel small { display: block; font-size: 11px; line-height: 1.6; color: #73836b; }
+.duplicate-panel form > button { justify-self: start; }
+.shared-issue-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 18px 0 10px; font-size: 13px; }
+.shared-issue-heading span { color: #69805a; }
+.duplicate-members { list-style: none; padding: 0; margin: 12px 0; }
+.duplicate-members li { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; border-top: 1px solid #e2e8db; padding: 12px 0; }
+.duplicate-members li > div { min-width: 0; }
+.duplicate-members a { color: #385b42; font-size: 12px; overflow-wrap: anywhere; }
+.duplicate-panel > p a { color: #385b42; text-decoration: underline; }
+.shared-work-form, .shared-message-form { border-top: 1px solid #dce5d3; padding-top: 18px; }
+.shared-work-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.shared-notice { color: #426a36; font-size: 12px; padding: 10px 0; }
+.unlink-confirm { background: #faf7ed; padding: 14px; border-radius: 8px; margin-top: 14px; }
+.unlink-confirm p { font-size: 12px; line-height: 1.7; }
+.unlink-confirm button { margin: 8px 8px 0 0; }
+.duplicate-badge { display: inline-block; border: 1px solid #d9deed; color: #56678f; background: #f2f4fc; padding: 2px 7px; border-radius: 5px; font-size: 10px; margin-top: 7px; }
+@media (max-width: 640px) {
+  .duplicate-members li { flex-direction: column; gap: 8px; }
+  .shared-work-actions { flex-direction: column; }
+  .shared-work-actions button { width: 100%; }
+}
