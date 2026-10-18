@@ -70,7 +70,7 @@ test("new employee joins with invitation; existing employee signs in from anothe
     .getByRole("button", { name: "Create employee account", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "A little feedback. A lot of clarity." }),
+    page.getByRole("heading", { name: "Your work, with a clear next step." }),
   ).toBeVisible();
   await expect(page.locator(".top-avatar")).toHaveAttribute("title", name);
   await page.goto(base + "/");
@@ -132,10 +132,11 @@ test("new employee joins with invitation; existing employee signs in from anothe
     .click();
   await expect(
     returned.getByRole("heading", {
-      name: "A little feedback. A lot of clarity.",
+      name: "Your work, with a clear next step.",
     }),
   ).toBeVisible();
   await expect(returned.locator(".top-avatar")).toHaveAttribute("title", name);
+  await returned.getByRole("button", { name: "Open project inbox", exact: true }).click();
   await returned
     .getByLabel("Filter by project", { exact: true })
     .selectOption(project.id);

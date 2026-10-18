@@ -31,6 +31,7 @@ test("switching employees clears another account's local draft and sign-out remo
     .poll(() => page.evaluate(() => localStorage.getItem("bugbrief-draft")))
     .toContain("Private unsaved text");
   await page.reload();
+  await page.getByRole("button", { name: "Continue your draft", exact: true }).click();
   await expect(field).toHaveValue(
     "Private unsaved text from the first employee.",
   );

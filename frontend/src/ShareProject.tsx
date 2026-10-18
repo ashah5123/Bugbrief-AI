@@ -23,6 +23,8 @@ export default function ShareProject({
   const dialogRef = useRef<HTMLElement>(null);
   const [id, setId] = useState(initialId || projects[0]?.id || "");
   const [token, setToken] = useState("");
+  const [teamName, setTeamName] = useState("");
+  const [teamSaved, setTeamSaved] = useState(false);
   const [website, setWebsite] = useState(
     projects.find((p) => p.id === initialId)?.url || projects[0]?.url || "",
   );
@@ -33,12 +35,21 @@ export default function ShareProject({
     let cancelled = false;
     setToken("");
     setWebsite(projects.find((p) => p.id === id)?.url || "");
+    setTeamName(projects.find((p) => p.id === id)?.team_name || "");
+    setTeamSaved(false);
     setError("");
     if (!id) return;
     setBusy(true);
-    api<{ token: string }>(`/projects/${id}/intake-link`, "POST", {})
-      .then((data) => {
-        if (!cancelled) setToken(data.token);
+    Promise.all([
+      api<{ token: string }>(`/projects/${id}/intake-link`, "POST", {}),
+      api<Project[]>("/projects"),
+    ]).then(([data, current]) => {
+        if (!cancelled) {
+          setToken(data.token);
+          const project = current.find(value => value.id === id);
+          setTeamName(project?.team_name || "");
+          setWebsite(project?.url || "");
+        }
       })
       .catch((e) => {
         if (!cancelled) setError(e.message);
@@ -175,6 +186,22 @@ export default function ShareProject({
             >
               Open customer form <ArrowUpRight size={13} />
             </a>
+            <div className="share-website team-name-setting">
+              <label>Company or team name shown to customers
+                <input maxLength={100} value={teamName} onChange={event => { setTeamName(event.target.value); setTeamSaved(false); }} placeholder="e.g. Acme support team" />
+              </label>
+              <button className="secondary-button" disabled={busy} onClick={async () => {
+                setBusy(true);
+                try {
+                  const project = (await api<Project[]>("/projects")).find(value => value.id === id);
+                  if (!project) throw new Error("Project access changed. Reopen this dialog.");
+                  await api(`/projects/${id}`, "PUT", { name: project.name, url: project.url, team_name: teamName.trim() });
+                  setTeamSaved(true); setError("");
+                } catch (e) { setError((e as Error).message); }
+                finally { setBusy(false); }
+              }}>{teamSaved ? "Team name saved" : "Save team name"}</button>
+              <small>Customers see this name on their project and reporting form. Leave it blank to show “Your project team”.</small>
+            </div>
             <div className="share-option">
               <span className="share-option-icon">
                 <Code2 size={19} />

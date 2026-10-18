@@ -1,3 +1,5 @@
+import MyWork from "./MyWork";
+import NextStep from "./NextStep";
 import { compareTriage, customerKey, overdue, priorityLabels, TriageBadges, todayLocal } from "./triage";
 import { browserStorage, clearCompanyDrafts } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
@@ -57,7 +59,7 @@ import {
   type Claim,
 } from "./types";
 
-type View = "overview" | "feedback" | "reports" | "projects";
+type View = "mywork" | "overview" | "feedback" | "reports" | "projects";
 type Draft = {
   project_id: string;
   text: string;
@@ -167,7 +169,7 @@ export default function App() {
     Boolean(browserStorage.getItem("bugbrief-active-id")),
   );
   const [sharing, setSharing] = useState<string | null>(null);
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>(employee ? "mywork" : "overview");
   const [projects, setProjects] = useState<Project[]>([]);
   const [employees, setEmployees] = useState<IssueEmployee[]>([]);
   const [priorityFilter, setPriorityFilter] = useState("all");
@@ -234,7 +236,10 @@ export default function App() {
     };
   }, [!!selected]);
   const closeModal = useRef(() => setModal(null)).current;
-  const closeSharing = useRef(() => setSharing(null)).current;
+  const closeSharing = useRef(() => {
+    setSharing(null);
+    void refresh().catch(e => setError(e.message));
+  }).current;
   useEffect(() => {
     if (!modal && !selected) return;
     const previous = document.body.style.overflow;
@@ -624,6 +629,7 @@ export default function App() {
         <nav aria-label="Main navigation">
           {(
             [
+              ...(employee ? [{ id: "mywork" as const, label: "My work", icon: CheckCheck }] : []),
               { id: "overview", label: "Overview", icon: LayoutGrid },
               { id: "feedback", label: "Feedback inbox", icon: Inbox },
               { id: "reports", label: "Bug reports", icon: FileText },
@@ -736,7 +742,7 @@ export default function App() {
             <span>Workspace</span>
             <ChevronRight size={14} />
             <strong>
-              {view === "overview"
+              {view === "mywork" ? "My work" : view === "overview"
                 ? "Overview"
                 : view === "feedback"
                   ? "Feedback inbox"
@@ -793,7 +799,7 @@ export default function App() {
                 <span className="eyebrow-line" /> FROM FEEDBACK TO FIX
               </div>
               <h1>
-                {view === "overview"
+                {view === "mywork" ? "Your work, with a clear next step." : view === "overview"
                   ? "A little feedback. A lot of clarity."
                   : view === "feedback"
                     ? "Make sense of every “it’s broken”."
@@ -802,7 +808,7 @@ export default function App() {
                       : "A home for every project."}
               </h1>
               <p>
-                {view === "overview"
+                {view === "mywork" ? `Welcome back, ${employee?.name}. Here’s what needs your attention.` : view === "overview"
                   ? "Turn scattered client feedback into bug reports your team can act on."
                   : view === "feedback"
                     ? "Capture the original feedback. Let AI help with the details."
@@ -848,6 +854,7 @@ export default function App() {
               workspace…
             </div>
           )}
+          {view === "mywork" && employee && <MyWork employeeId={employee.id} items={items} projects={projects} today={today} open={openItem} resumeDraft={draft.text.trim() || activeId ? newFeedback : undefined} inbox={() => { resetFilters(); navigate("feedback"); }} />}
           {(view === "overview" || view === "projects") && (
             <section className="customer-collection-banner">
               <div>
@@ -919,7 +926,7 @@ export default function App() {
               </div>
             </>
           )}
-          {view !== "projects" && <section className="triage-summary" aria-label="Reports needing attention">
+          {view !== "projects" && view !== "mywork" && <section className="triage-summary" aria-label="Reports needing attention">
             {([
               ["overdue", "Overdue reports", items.filter(item => overdue(item.workflow, today)).length],
               ["today", "Due today", items.filter(item => item.workflow.status !== "resolved" && item.workflow.due_date === today).length],
@@ -1117,6 +1124,7 @@ export default function App() {
                     <WorkflowPanel
                       key={activeFeedback.id}
                       feedbackId={activeFeedback.id}
+                      hasCustomer={!!activeFeedback.customer}
                       workflow={activeFeedback.workflow}
                       employees={employees.filter((employee) =>
                         employee.project_ids.includes(
@@ -1280,7 +1288,7 @@ export default function App() {
                 <p>Give your feedback a place to belong.</p>
               </button>
             </section>
-          ) : (
+          ) : view === "mywork" ? null : (
             <section className="recent-section">
               <div className="section-heading">
                 <div>
@@ -1469,6 +1477,7 @@ export default function App() {
                               {item.workflow.assigned_to?.name || "Unassigned"}
                             </small>
                             <TriageBadges workflow={item.workflow} today={today} />
+                            <NextStep workflow={item.workflow} audience="company" hasCustomer={!!item.customer} compact />
                           </span>
                         </div>
                         <span className="project-cell">
@@ -1796,6 +1805,7 @@ export default function App() {
               <WorkflowPanel
                 key={selected.id}
                 feedbackId={selected.id}
+                hasCustomer={!!selected.customer}
                 workflow={selected.workflow}
                 employees={employees.filter((employee) =>
                   employee.project_ids.includes(selected.project_id),

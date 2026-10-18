@@ -343,3 +343,33 @@ with TestClient(app) as c:
 """
     for code in (write, read):
         subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+
+
+def test_project_team_name_upgrade_defaults_and_survives_restart(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    path = tmp_path / 'team-name.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{path}', 'AGENCY_ACCESS_CODE': 'team-name-owner-code', 'MAIL_MODE': 'local'}
+    def migrate(version):
+        subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', version], cwd=root, env=env, check=True, capture_output=True)
+    migrate('0011')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at) VALUES ('p','Preserved project','https://example.test','old')")
+    migrate('head')
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT name,url,created_at,team_name FROM projects').fetchone() == ('Preserved project','https://example.test','old','')
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    for code in ("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='team-name-owner-code'
+    assert c.put('/api/projects/p',json={'name':'Preserved project','url':'https://example.test','team_name':'Persistent support team'}).status_code==200
+""", """
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='team-name-owner-code'
+    assert c.get('/api/projects').json()[0]['team_name']=='Persistent support team'
+"""):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)

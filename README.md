@@ -79,6 +79,14 @@ To embed the button on a website you control, set the project's website URL in t
 
 Starting work, marking ready to retest, or resolving requires an assigned employee. Direct New → Resolved transitions are rejected. Progress uses a separate version so stale updates cannot overwrite another employee’s work, and it does not consume hosted-processing quota. Employees manage progress; customers can confirm or reject the current ready-to-retest fix. Progress does not automatically modify application code. In-app notifications and optional email alerts now cover replies, progress updates and retest requests.
 
+## Personal work and customer next steps
+
+Named employees land on **My work**, with queues for their assigned unresolved reports, overdue work, customers awaiting a public reply, and fixes awaiting retest. Each card shows the next action and opens the report. **Open project inbox** leads employees with an empty queue to their authorized projects; the workspace owner keeps the overview. Existing permissions still control the API. A **Continue your draft** button restores feedback left in the same browser/account.
+
+Report lists and open reports now explain what happens next for each role: reply to the customer, collect missing details, investigate, request a retest, or wait for confirmation. Customers see their own report summaries and outstanding actions before project connection controls. Drafts, information requests and fixes ready to test have direct report links. Returning accounts wait for their data before displaying onboarding; closed projects retain report access without offering a new-report link.
+
+In **Collect customer feedback**, select a project and save **Company or team name shown to customers**. The project card and reporting/tracking form display that team name. Existing projects use the neutral “Your project team” fallback until a name is configured. A customer with one open project gets a direct **Report an issue** action; multiple projects get an explicit project choice.
+
 ## Company triage dashboard
 
 Open a report or feedback item and use **Priority & deadline** to choose Low, Normal, High or Urgent and an optional due date. These planning fields are company-only and do not change report content or consume processing quota. Existing reports start at Normal with no deadline. Saves reject stale versions rather than overwrite a colleague's changes.

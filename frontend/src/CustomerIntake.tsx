@@ -42,6 +42,7 @@ type Record = {
   intake_token: string;
   reference: string;
   project_name: string;
+  team_name?: string;
   project_url: string;
   stage: string;
   reporter_name: string;
@@ -63,6 +64,7 @@ type Record = {
 };
 type Config = {
   project_name: string;
+  team_name?: string;
   project_url: string;
   allowed_origin: string;
 };
@@ -144,6 +146,7 @@ export default function CustomerIntake({
     setRecord(value);
     setConfig({
       project_name: value.project_name,
+      team_name: value.team_name,
       project_url: value.project_url,
       allowed_origin: value.project_url
         ? new URL(value.project_url).origin
@@ -578,6 +581,7 @@ export default function CustomerIntake({
           <div>
             <small>FEEDBACK FOR</small>
             <strong>{config.project_name}</strong>
+            <small>Managed by {config.team_name || "your project team"}</small>
           </div>
           <span className="customer-project-tag">CUSTOMER PORTAL</span>
         </div>

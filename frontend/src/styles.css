@@ -6070,3 +6070,56 @@ code {
   .workflow-filters label { min-width: 0; flex: 1 1 42%; flex-direction: column; align-items: stretch; gap: 6px; }
   .workflow-filters select { width: 100%; min-width: 0; max-width: none; flex: initial; }
 }
+
+/* Personal work queues and clear next actions. */
+.next-step { margin: 16px 0; padding: 16px 18px; border: 1px solid #dce7d4; border-left: 3px solid #74935d; border-radius: 10px; background: #f6f9f2; }
+.next-step > strong { display: block; font-size: 14px; color: #355240; margin-top: 5px; }
+.next-step > p { margin: 7px 0 0; color: #61725c; font-size: 12px; line-height: 1.65; }
+.next-step-compact { margin: 8px 0 0; padding: 0; border: 0; background: none; }
+.next-step-compact > strong { font-size: 11px; white-space: normal; line-height: 1.5; color: #557747; }
+.my-work-queues { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 28px; }
+.my-work-queues button { display: flex; flex-direction: column; text-align: left; gap: 9px; padding: 20px; border: 1px solid #e0e6d9; border-radius: 12px; background: white; cursor: pointer; }
+.my-work-queues button[aria-pressed="true"] { border-color: #72925d; background: #f1f6eb; }
+.my-work-queues strong { font-size: 25px; color: #345944; }
+.my-work-queues span { font-size: 12px; color: #63725b; }
+.my-work-list { display: grid; gap: 12px; }
+.my-work-item { display: block; width: 100%; padding: 20px; text-align: left; border: 1px solid #e0e6d9; border-radius: 12px; background: white; cursor: pointer; }
+.my-work-item:hover { border-color: #8ba979; }
+.my-work-item-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+.my-work-item-heading > strong { font-size: 15px; overflow-wrap: anywhere; }
+.my-work-project { display: block; margin: 8px 0; font-size: 12px; color: #77816c; }
+.work-open { display: flex; align-items: center; justify-content: flex-end; gap: 7px; font-size: 12px; color: #456b3c; margin-top: 12px; }
+.customer-start { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 24px; border: 1px solid #dae6cf; border-radius: 14px; background: #f1f6e9; margin: 24px 0; }
+.customer-start h2 { font-size: 20px; margin: 8px 0; }
+.customer-start p { font-size: 13px; line-height: 1.7; color: #6b7d5b; max-width: 560px; }
+.customer-start > a { flex-shrink: 0; }
+.customer-attention { margin: 28px 0; }
+.customer-attention h2 { font-size: 18px; margin-bottom: 14px; }
+.customer-attention > div { display: grid; gap: 10px; }
+.customer-attention a { display: grid; grid-template-columns: 1fr auto; gap: 7px 16px; padding: 17px; border: 1px solid #e7d9ad; background: #fffbed; border-radius: 10px; text-decoration: none; color: #715b25; }
+.customer-attention strong { font-size: 13px; }
+.customer-attention a > span { font-size: 12px; grid-column: 1; overflow-wrap: anywhere; }
+.customer-attention a > svg { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+.report-project-name { display: block; color: #758267; font-size: 12px; margin-top: 5px; }
+.project-team-name { color: #748267; font-size: 12px; margin: 8px 0 18px; }
+.customer-report-list .next-step { margin-top: 8px; }
+.team-name-setting { flex-wrap: wrap; }
+.team-name-setting > small { flex-basis: 100%; line-height: 1.6; color: #77866a; }
+@media (max-width: 640px) {
+  .my-work-queues { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .my-work-queues button { padding: 15px; }
+  .my-work-item { padding: 16px; }
+  .my-work-item-heading { flex-direction: column; gap: 10px; }
+  .customer-start { flex-direction: column; align-items: stretch; padding: 20px; }
+  .customer-start > a { justify-content: center; }
+}
+
+.project-team-name, .customer-project small, .customer-report-list strong { overflow-wrap: anywhere; }
+
+.resume-work-draft { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 20px; padding: 18px; border: 1px solid #e4dfc6; border-radius: 12px; background: #fffdf4; }
+.resume-work-draft strong { font-size: 14px; }
+.resume-work-draft p { font-size: 12px; color: #7b7d66; margin: 6px 0 0; }
+@media (max-width: 640px) { .resume-work-draft { align-items: stretch; flex-direction: column; } }
+
+.customer-start > .primary-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; }
+.customer-signed-in { margin-top: 32px; }

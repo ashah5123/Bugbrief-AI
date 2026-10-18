@@ -1,3 +1,4 @@
+import NextStep from "./NextStep";
 import TriagePanel from "./TriagePanel";
 import Conversation from "./Conversation";
 import { useEffect, useRef, useState } from "react";
@@ -103,6 +104,7 @@ export function CustomerProgress({
       </div>
       <h2>{workflow.label}</h2>
       <p>{explanations[workflow.status]}</p>
+      <NextStep workflow={workflow} audience="customer" />
       <div className="progress-owner">
         <UserRound size={16} />
         <span>
@@ -158,12 +160,14 @@ export function CustomerProgress({
   );
 }
 export default function WorkflowPanel({
+  hasCustomer = true,
   feedbackId,
   workflow,
   employees,
   onChange,
 }: {
   feedbackId: string;
+  hasCustomer?: boolean;
   workflow: IssueWorkflow;
   employees: IssueEmployee[];
   onChange: (value: IssueWorkflow) => void;
@@ -195,6 +199,7 @@ export default function WorkflowPanel({
     !!note.trim();
   return (
     <>
+      <NextStep workflow={workflow} audience="company" hasCustomer={hasCustomer} />
       <TriagePanel key={feedbackId} feedbackId={feedbackId} workflow={workflow} onChange={onChange} />
       <section className="workflow-panel" aria-label="Assignment and progress">
         <div className="progress-card-heading">

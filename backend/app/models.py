@@ -12,6 +12,7 @@ def now():
 
 class Project(Base):
     __tablename__ = 'projects'
+    team_name: Mapped[str] = mapped_column(String(100), default='', server_default='')
     customer_access: Mapped[str] = mapped_column(String, default='link', server_default='link')
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     name: Mapped[str] = mapped_column(String(100))

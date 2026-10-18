@@ -27,6 +27,7 @@ def reports(account=Depends(require_customer), db: Session = Depends(get_db)):
     records = [item for item in records if customer_can_access(db, account.id, db.get(IntakeLink, item.link_id).project_id)]
     return [{'access_token': item.access_token, 'project_name': db.get(Project, db.get(IntakeLink, item.link_id).project_id).name,
              'reference': item.feedback_id[:8].upper(), 'stage': item.stage,
+             'summary': db.get(Feedback, item.feedback_id).text[:160],
              'workflow': progress_snapshot(db, db.get(Feedback, item.feedback_id), public=True, history=False) if item.stage == 'submitted' else None} for item in records]
 
 
@@ -36,7 +37,7 @@ def projects(account=Depends(require_customer), db: Session = Depends(get_db)):
         .join(Project, Project.id == CustomerMembership.project_id)
         .join(IntakeLink, IntakeLink.id == CustomerMembership.link_id)
         .where(CustomerMembership.account_id == account.id, CustomerMembership.revoked_at.is_(None)).order_by(Project.name)).all()
-    return [{'id': project.id, 'name': project.name, 'intake_token': link.token if not link.revoked_at else None,
+    return [{'id': project.id, 'name': project.name, 'team_name': project.team_name, 'intake_token': link.token if not link.revoked_at else None,
              'closed': bool(link.revoked_at)} for _, project, link in rows]
 
 
@@ -46,7 +47,7 @@ def join_project(data: Capability, account=Depends(require_customer), db: Sessio
     connect_project(db, account.id, link)
     db.commit()
     project = db.get(Project, link.project_id)
-    return {'id': project.id, 'name': project.name, 'intake_token': link.token, 'closed': False}
+    return {'id': project.id, 'name': project.name, 'team_name': project.team_name, 'intake_token': link.token, 'closed': False}
 
 
 @router.post('/claims')

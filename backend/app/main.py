@@ -136,6 +136,8 @@ async def edit_project(project_id: str, data: ProjectIn, db: Session = Depends(g
     if project is None:
         raise HTTPException(404, 'Project not found')
     project.name, project.url = data.name, data.url
+    if 'team_name' in data.model_fields_set:
+        project.team_name = data.team_name
     db.commit()
     return serialize(project)
 

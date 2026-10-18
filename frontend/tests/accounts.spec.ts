@@ -69,7 +69,8 @@ test("new customer signs up; returning customer finds and deletes report from a 
     .getByRole("button", { name: "Connect project", exact: true })
     .click();
   await page
-    .getByRole("link", { name: "Report a problem", exact: true })
+    .locator(".customer-project-grid")
+    .getByRole("link", { name: "Report an issue", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: /What went wrong/ })

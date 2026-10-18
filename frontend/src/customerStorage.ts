@@ -4,6 +4,7 @@ export type SavedSubmission = {
   project_name: string;
   reference: string;
   stage: string;
+  summary?: string;
   account_owned?: boolean;
   workflow?: IssueWorkflow | null;
 };

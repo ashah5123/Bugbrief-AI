@@ -62,7 +62,7 @@ def test_tampered_cookie_denied(anonymous):
 
 def test_project_config_is_minimal(anonymous,link):
     response=anonymous.get(f'/api/public/intake/{link["token"]}')
-    assert response.json()=={'project_name':'Customer site','project_url':'https://example.com','allowed_origin':'https://example.com'}
+    assert response.json()=={'project_name':'Customer site','team_name':'','project_url':'https://example.com','allowed_origin':'https://example.com'}
     assert anonymous.get('/api/public/intake/nonexistent').status_code==404
     assert anonymous.delete(f'/api/projects/{link["project_id"]}/intake-link').status_code==401
 

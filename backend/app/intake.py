@@ -87,7 +87,7 @@ def snapshot(db, item):
     link = db.get(IntakeLink, item.link_id)
     project = db.get(Project, link.project_id)
     return {'access_token': item.access_token, 'intake_token': link.token, 'reference': feedback.id[:8].upper(),
-            'project_name': project.name, 'project_url': project.url, 'stage': item.stage, 'account_owned': bool(item.account_id),
+            'project_name': project.name, 'team_name': project.team_name, 'project_url': project.url, 'stage': item.stage, 'account_owned': bool(item.account_id),
             'reporter_name': item.reporter_name, 'text': feedback.text, 'page_url': feedback.page_url,
             'workflow': progress_snapshot(db, feedback, public=True) if item.stage == 'submitted' else None,
             'context': item.context, 'processing_error': item.processing_error,
@@ -122,7 +122,7 @@ def intake_config(token: str, request: Request, db: Session = Depends(get_db)):
     project = db.get(Project, link.project_id)
     from .project_access import require_customer_project
     require_customer_project(request, db, link.project_id)
-    return {'project_name': project.name, 'project_url': project.url, 'allowed_origin': origin(project.url)}
+    return {'project_name': project.name, 'team_name': project.team_name, 'project_url': project.url, 'allowed_origin': origin(project.url)}
 
 def set_draft(item, feedback, data):
     item.reporter_name = data.reporter_name.strip()

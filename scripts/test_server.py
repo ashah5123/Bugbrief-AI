@@ -21,12 +21,19 @@ with SessionLocal() as s:
         (EmployeeAccount,EmployeeSession,'Workflow Employee','workflow-employee@example.com',b'e'),
         (CustomerAccount,CustomerSession,'Audit Customer','audit-customer@example.com',b'd'),
         (EmployeeAccount,EmployeeSession,'Audit Employee','audit-employee@example.com',b'a'),
+        (EmployeeAccount,EmployeeSession,'Personal desktop','experience-desktop@example.test',b'f'),
+        (EmployeeAccount,EmployeeSession,'Personal mobile','experience-mobile@example.test',b'g'),
+        (CustomerAccount,CustomerSession,'Guided Customer','guided-desktop@example.test',b'h'),
+        (CustomerAccount,CustomerSession,'Guided Customer','guided-mobile@example.test',b'i'),
+        (CustomerAccount,CustomerSession,'Returning Customer','returning-desktop@example.test',b'j'),
+        (CustomerAccount,CustomerSession,'Returning Customer','returning-mobile@example.test',b'k'),
     ]
     for model,sessions,name,email,seed_byte in identities:
         account=model(name=name,email=email,password_hash=hashed)
         s.add(account);s.flush()
         token=base64.urlsafe_b64encode(seed_byte*32).rstrip(b'=')
         s.add(sessions(token_hash=hashlib.sha256(token).hexdigest(),account_id=account.id,expires_at=time.time()+3600))
+    account=s.query(EmployeeAccount).filter_by(email='audit-employee@example.com').one()
     # Separate disposable Audit Employee sessions let each viewport test sign out independently.
     token=base64.urlsafe_b64encode(b'b'*32).rstrip(b'=')
     s.add(EmployeeSession(token_hash=hashlib.sha256(token).hexdigest(),account_id=account.id,expires_at=time.time()+3600))

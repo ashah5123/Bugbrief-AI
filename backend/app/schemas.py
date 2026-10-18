@@ -6,6 +6,13 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 class ProjectIn(StrictModel):
+    team_name: str = Field(default='', max_length=100)
+
+    @field_validator('team_name')
+    @classmethod
+    def trim_team(cls, value):
+        return value.strip()
+
     name: str = Field(min_length=1, max_length=100)
     url: str = Field(default='', max_length=2000)
 

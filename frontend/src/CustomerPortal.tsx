@@ -1,3 +1,4 @@
+import NextStep, { nextStep } from "./NextStep";
 import { activateCustomer, clearCustomerDrafts } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
 import { useEffect, useState, useRef, type FormEvent } from "react";
@@ -32,6 +33,7 @@ type Session = { authenticated: boolean; customer?: Customer };
 type CustomerProject = {
   id: string;
   name: string;
+  team_name: string;
   intake_token: string | null;
   closed: boolean;
 };
@@ -80,7 +82,8 @@ function Reports({
               <MessageSquare size={20} />
             </span>
             <div>
-              <strong>{item.project_name}</strong>
+              <strong>{item.summary || item.project_name}</strong>
+              {item.summary && <span className="report-project-name">{item.project_name}</span>}
               <small>
                 BB-{item.reference} ·{" "}
                 {item.workflow ? (
@@ -96,6 +99,7 @@ function Reports({
                   </span>
                 )}
               </small>
+              <NextStep workflow={item.workflow} audience="customer" compact />
             </div>
             <ArrowRight size={17} />
           </a>
@@ -138,6 +142,7 @@ export default function CustomerPortal({
   const accountIdentity = useRef<string | null>(null);
   const [items, setItems] = useState<SavedSubmission[]>([]);
   const [projects, setProjects] = useState<CustomerProject[]>([]);
+  const [accountReady, setAccountReady] = useState(false);
   const [legacy, setLegacy] = useState(savedSubmissions);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -163,6 +168,7 @@ export default function CustomerPortal({
     ]);
     setItems(reports);
     setProjects(connected);
+    setAccountReady(true);
   }
   useEffect(() => {
     api<Session>("/customer/session")
@@ -185,7 +191,7 @@ export default function CustomerPortal({
           return;
         }
         setSession(value);
-        if (value.authenticated) await refresh();
+        if (value.authenticated) await refresh().catch(e => setError(e.message));
       })
       .catch((e) => {
         setSession({ authenticated: false });
@@ -237,6 +243,12 @@ export default function CustomerPortal({
         Opening customer portal…
       </div>
     );
+  if (session.authenticated && !accountReady) return <div className="welcome-shell"><Header /><main className="customer-home">
+    <h1>Opening your reports…</h1>
+    {error ? <div className="alert error" role="alert">{error}<button className="secondary-button" onClick={() => { setError(""); void refresh().catch(e => setError(e.message)); }}>Try again</button></div> : <LoaderCircle className="spin" size={24} />}
+  </main></div>;
+  const activeProjects = projects.filter(project => !!project.intake_token);
+  const attention = items.filter(item => item.stage !== "submitted" || ["needs_information", "ready_to_retest"].includes(item.workflow?.status || ""));
   const suffix =
     returnPath() !== "/customer"
       ? `?next=${encodeURIComponent(returnPath())}`
@@ -426,7 +438,7 @@ export default function CustomerPortal({
   return (
     <div className="welcome-shell">
       <Header />
-      <main className="customer-home">
+      <main className="customer-home customer-signed-in">
         <div className="customer-account-heading">
           <div>
             <span className="eyebrow">YOUR CUSTOMER ACCOUNT</span>
@@ -467,11 +479,39 @@ export default function CustomerPortal({
             {notice}
           </div>
         )}
+        <section className="customer-start" aria-label="Your next step">
+          <div>
+            <span className="eyebrow">YOUR NEXT STEP</span>
+            <h2>{!projects.length ? "Connect your project to get started." : activeProjects.length ? "Report an issue or pick up a conversation." : "Your projects are closed for new reports."}</h2>
+            <p>{!projects.length ? "Use the invitation from the company that manages your website. They’ll receive the issues you send." : activeProjects.length ? "Your reports and replies stay together. Only you and the project team can access your reports." : "You can still open existing reports and reply to the team. Contact them if you need to report a new issue."}</p>
+          </div>
+          {activeProjects.length === 1 ?
+            <a className="primary-button" href={`/c/${activeProjects[0].intake_token}`}><Plus size={16} />Report an issue</a> :
+            <a className="primary-button" href={!projects.length ? "#project-invitation" : activeProjects.length ? "#your-projects" : "#your-reports"}>{!projects.length ? "Connect your project" : activeProjects.length ? "Choose a project" : "View your reports"}<ArrowRight size={16} /></a>}
+        </section>
+        {attention.length > 0 && <section className="customer-attention" aria-label="Reports needing your action">
+          <h2>Needs your attention <span className="count-badge">{attention.length}</span></h2>
+          <div>{attention.map(item => <a key={item.access_token} href={`/s/${item.access_token}`}>
+            <strong>{nextStep(item.workflow, "customer").title}</strong>
+            <span>{item.summary || item.project_name} · BB-{item.reference}</span><ArrowRight size={16} />
+          </a>)}</div>
+        </section>}
         <section className="my-reports">
           <div className="section-heading">
             <div>
-              <h2>Your projects</h2>
-              <p>Choose a project to report a new problem.</p>
+              <h2>
+                <span id="your-reports">Your reports</span> <span className="count-badge">{items.length}</span>
+              </h2>
+              <p>Available across browsers whenever you sign in.</p>
+            </div>
+          </div>
+          <Reports account items={items} onChange={refresh} />
+        </section>
+        <section className="my-reports">
+          <div className="section-heading">
+            <div>
+              <h2 id="your-projects">Your projects</h2>
+              <p>Choose the website or app with the issue. The named team receives your report.</p>
             </div>
           </div>
           {projects.length > 0 && (
@@ -480,13 +520,14 @@ export default function CustomerPortal({
                 <article key={project.id}>
                   <Building2 size={24} />
                   <h3>{project.name}</h3>
+                  <p className="project-team-name">Managed by {project.team_name || "your project team"}</p>
                   {project.intake_token ? (
                     <a
                       className="primary-button"
                       href={`/c/${project.intake_token}`}
                     >
                       <Plus size={15} />
-                      Report a problem
+                      Report an issue
                     </a>
                   ) : (
                     <small>This project is closed for new reports.</small>
@@ -543,17 +584,6 @@ export default function CustomerPortal({
               website.
             </small>
           </details>
-        </section>
-        <section className="my-reports">
-          <div className="section-heading">
-            <div>
-              <h2>
-                Your reports <span className="count-badge">{items.length}</span>
-              </h2>
-              <p>Available across browsers whenever you sign in.</p>
-            </div>
-          </div>
-          <Reports account items={items} onChange={refresh} />
         </section>
         {legacy.filter(
           (item) =>

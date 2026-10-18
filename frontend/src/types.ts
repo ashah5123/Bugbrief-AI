@@ -1,4 +1,5 @@
 export type Project = {
+  team_name: string;
   id: string;
   name: string;
   url: string;

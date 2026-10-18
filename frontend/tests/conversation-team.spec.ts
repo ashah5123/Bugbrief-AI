@@ -193,7 +193,7 @@ test("owner invites an employee using test outbox, verifies email and removes ac
     .click();
   await expect(
     employee.getByRole("heading", {
-      name: "A little feedback. A lot of clarity.",
+      name: "Your work, with a clear next step.",
     }),
   ).toBeVisible();
   await page
@@ -269,7 +269,7 @@ test("owner invites an employee using test outbox, verifies email and removes ac
     .click();
   await expect(
     employee.getByRole("heading", {
-      name: "A little feedback. A lot of clarity.",
+      name: "Your work, with a clear next step.",
     }),
   ).toBeVisible();
   await page.reload();
