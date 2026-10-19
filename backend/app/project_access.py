@@ -35,6 +35,21 @@ def require_company_project(request, db, project_id):
     return project
 
 
+def project_permissions(request, db, project_id):
+    if owner_allowed(request):
+        return {'role': 'owner', 'work': True, 'manage': True, 'delete': True}
+    employee = current_employee(request, db)
+    grant = db.get(EmployeeProject, (employee.id, project_id)) if employee else None
+    return {'role': grant.role if grant else 'none', 'work': bool(grant and grant.role in ('contributor', 'manager')),
+            'manage': bool(grant and grant.role == 'manager'), 'delete': bool(grant and grant.can_delete)}
+
+
+def require_project_action(request, db, project_id, action):
+    require_company_project(request, db, project_id)
+    if not project_permissions(request, db, project_id)[action]:
+        raise HTTPException(403, 'Your project permissions do not allow this action. Ask the workspace owner.')
+
+
 def customer_membership(db, account_id, project_id):
     return db.scalar(select(CustomerMembership).where(CustomerMembership.account_id == account_id,
         CustomerMembership.project_id == project_id))
@@ -64,12 +79,29 @@ def access(project_id: str, db: Session = Depends(get_db)):
     customers = db.execute(select(CustomerAccount, CustomerMembership).join(CustomerMembership,
         CustomerMembership.account_id == CustomerAccount.id).where(CustomerMembership.project_id == project_id).order_by(CustomerAccount.name)).all()
     return {'customer_access': project.customer_access,
-        'employees': [{'id': m.id, 'name': m.name, 'email': m.email} for m in employees],
+        'employees': [{'id': m.id, 'name': m.name, 'email': m.email,
+                       'role': db.get(EmployeeProject, (m.id, project_id)).role,
+                       'can_delete': bool(db.get(EmployeeProject, (m.id, project_id)).can_delete)} for m in employees],
         'customers': [{'id': m.id, 'name': m.name, 'email': m.email, 'revoked_at': membership.revoked_at} for m, membership in customers]}
 
 
 class CustomerAccess(StrictModel):
     mode: Literal['link', 'members']
+
+
+class EmployeePermissions(StrictModel):
+    role: Literal['viewer', 'contributor', 'manager']
+    can_delete: bool = False
+
+
+@router.patch('/api/projects/{project_id}/members/employee/{member_id}', dependencies=[Depends(require_owner)])
+def employee_permissions(project_id: str, member_id: str, data: EmployeePermissions, db: Session = Depends(get_db)):
+    grant = db.get(EmployeeProject, (member_id, project_id))
+    if not grant:
+        raise HTTPException(404, 'Employee project membership not found.')
+    grant.role, grant.can_delete = data.role, int(data.can_delete)
+    db.commit()
+    return access(project_id, db)
 
 
 @router.patch('/api/projects/{project_id}/access', dependencies=[Depends(require_owner)])

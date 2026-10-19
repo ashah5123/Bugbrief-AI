@@ -144,6 +144,10 @@ test("new employee joins with invitation; existing employee signs in from anothe
     .locator(".feedback-row")
     .filter({ hasText: "An issue for the employee team" })
     .click();
+  await expect(returned.getByRole("button", { name: "Delete report", exact: true })).toBeDisabled();
+  const employeeId = (await (await returning.request.get(base + "/api/auth/session")).json()).employee.id;
+  expect((await request.patch(`${base}/api/projects/${project.id}/members/employee/${employeeId}`, { data: { role: "manager", can_delete: true } })).ok()).toBe(true);
+  await returned.evaluate(() => window.dispatchEvent(new Event("focus")));
   await returned
     .getByRole("button", { name: "Delete report", exact: true })
     .click();

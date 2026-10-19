@@ -37,6 +37,19 @@ with SessionLocal() as s:
     # Separate disposable Audit Employee sessions let each viewport test sign out independently.
     token=base64.urlsafe_b64encode(b'b'*32).rstrip(b'=')
     s.add(EmployeeSession(token_hash=hashlib.sha256(token).hexdigest(),account_id=account.id,expires_at=time.time()+3600))
+    # Long histories exist only in this disposable database and start archived.
+    # Seeding avoids weakening rate limits just to create hundreds of browser-test replies.
+    from app.models import Project, Feedback, IntakeLink, CustomerSubmission, ReportMessage, now
+    for viewport, byte in [('desktop', b'l'), ('mobile', b'm')]:
+        token=base64.urlsafe_b64encode(byte*32).rstrip(b'=').decode()
+        project=Project(name='History fixture '+viewport)
+        s.add(project);s.flush()
+        link=IntakeLink(project_id=project.id,token=base64.urlsafe_b64encode((b'n' if viewport=='desktop' else b'o')*32).rstrip(b'=').decode())
+        feedback=Feedback(project_id=project.id,text='Archived history fixture '+viewport,archived_at=now())
+        s.add_all([link,feedback]);s.flush()
+        s.add(CustomerSubmission(link_id=link.id,feedback_id=feedback.id,access_token=token,client_nonce='history-fixture-nonce-'+viewport,stage='submitted',submitted_at=now(),archived_at=now()))
+        for number in range(215):
+            s.add(ReportMessage(feedback_id=feedback.id,visibility='public' if number<205 else 'internal',author_role='company',author_name='Fixture team',body=('Public history ' if number<205 else 'Private history ')+str(number),created_at='2026-01-01T00:00:00+00:00'))
     s.commit()
 """
     subprocess.run([sys.executable, '-c', seed], cwd=root/'backend', env=env, check=True)

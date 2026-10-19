@@ -14,6 +14,9 @@ The captured_context source records browser/viewport at submission time, not a d
 If it says the issue browser is NOT confirmed, do not assert it as the environment where the bug happened.
 Never use captured_context for reproduction steps or expected behaviour.
 Sources named clarification:<id> are user answers; question_context:<id> is only question context, not evidence.
+Sources guided:goal, guided:expected, guided:steps and guided:frequency are the customer's answers about their
+goal, expected result, actions and frequency. Missing answers remain unknown; 'Not sure' establishes no frequency.
+An intended goal alone does not establish actions actually taken. Use explicit steps or original feedback for reproduction.
 Sources named screenshot:<id>:<index> are UNVERIFIED machine observations of a reviewed screenshot, not user
 statements. Cite them only for visible observations or actual appearance. A screenshot CANNOT establish preceding
 actions, reproduction steps, expected behaviour, event timing, browser interaction or root cause. Never use a

@@ -1,4 +1,7 @@
+import type { GuidedAnswers } from "./GuidedDetails";
+
 export type Project = {
+  permissions?: { role: string; work: boolean; manage: boolean; delete: boolean };
   team_name: string;
   id: string;
   name: string;
@@ -46,6 +49,7 @@ export type Clarification = {
   created_at: string;
 };
 export type CustomerMetadata = {
+  guided_details?: GuidedAnswers | null;
   id: string;
   reporter_name: string;
   stage: string;
@@ -79,6 +83,7 @@ export type IssueWorkflow = {
   history_truncated?: boolean;
 };
 export type Feedback = {
+  archived_at?: string | null;
   duplicate_group?: { main_feedback_id: string; count: number; is_main: boolean } | null;
   workflow: IssueWorkflow;
   customer: CustomerMetadata | null;

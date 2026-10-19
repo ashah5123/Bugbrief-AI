@@ -1,5 +1,6 @@
 import { Check, Globe, Monitor, UserRound } from "lucide-react";
 import type { Feedback } from "./types";
+import GuidedDetails from "./GuidedDetails";
 export default function CustomerContext({ feedback }: { feedback: Feedback }) {
   const customer = feedback.customer;
   if (!customer) return null;
@@ -15,6 +16,7 @@ export default function CustomerContext({ feedback }: { feedback: Feedback }) {
         original description, screenshots and answers were collected before
         agency review.
       </p>
+      <GuidedDetails details={customer.guided_details} />
       <dl>
         <div>
           <dt>Submitted</dt>
@@ -74,7 +76,9 @@ export default function CustomerContext({ feedback }: { feedback: Feedback }) {
         className={`context-confirmation ${context.same_browser_confirmed ? "confirmed" : ""}`}
       >
         <Check size={14} />
-        {context.same_browser_confirmed
+        {!context.user_agent
+          ? "Browser details were not shared."
+          : context.same_browser_confirmed
           ? "Customer confirmed this is the issue browser."
           : "Submission context only. The customer has not confirmed this is the issue browser."}
       </div>

@@ -119,6 +119,9 @@ def test_employee_can_manage_shared_projects_and_delete_workspace_reports(client
         project = employee.post('/api/projects', json={'name': 'Shared company project'}).json()
         feedback = client.post('/api/feedback', json={'project_id': project['id'], 'text': 'A report for the team.'}).json()
         assert employee.get(f'/api/feedback/{feedback["id"]}').status_code == 200
+        assert employee.delete(f'/api/feedback/{feedback["id"]}').status_code == 403
+        eid = employee.get('/api/auth/session').json()['employee']['id']
+        assert client.patch(f'/api/projects/{project["id"]}/members/employee/{eid}', json={'role':'manager','can_delete':True}).status_code == 200
         assert employee.delete(f'/api/feedback/{feedback["id"]}').status_code == 200
         assert client.get(f'/api/feedback/{feedback["id"]}').status_code == 404
 

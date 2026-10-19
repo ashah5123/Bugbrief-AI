@@ -18,9 +18,20 @@ function base64(blob: Blob) {
     reader.readAsDataURL(blob);
   });
 }
-export default function Conversation({ feedbackId, token }: { feedbackId?: string; token?: string }) {
+type MessagePage = { items: Message[]; next_before: string | null };
+function mergeMessages(previous: Message[], incoming: Message[]) {
+  return [...new Map([...previous, ...incoming].map(value => [value.id, value])).values()]
+    .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id));
+}
+export default function Conversation({ feedbackId, token, readOnly = false }: { feedbackId?: string; token?: string; readOnly?: boolean }) {
   const endpoint = token ? `/public/submissions/${token}/messages` : `/feedback/${feedbackId}/messages`;
   const [messages, setMessages] = useState<Message[]>([]);
+  const messageCache = useRef<Message[]>([]);
+  const [historyNotice, setHistoryNotice] = useState("");
+  const [older, setOlder] = useState<string | null>(null);
+  const olderRef = useRef<string | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const generation = useRef(0);
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState("public");
   const [busy, setBusy] = useState(false);
@@ -30,20 +41,37 @@ export default function Conversation({ feedbackId, token }: { feedbackId?: strin
   const [reviewOpen, setReviewOpen] = useState(false);
   const previews = useRef(new Set<string>());
   const pending = useRef<{ signature: string; id: string } | null>(null);
+  function latest(value: MessagePage) {
+    const ids = new Set(messageCache.current.map(message => message.id));
+    const gap = ids.size > 0 && value.items.length > 0 && !value.items.some(message => ids.has(message.id));
+    if (gap) {
+      generation.current += 1;
+      messageCache.current = value.items;
+      setOlder(value.next_before); olderRef.current = value.next_before;
+      setHistoryNotice("Newer replies arrived. Load older replies again to see the complete history.");
+    } else messageCache.current = mergeMessages(messageCache.current, value.items);
+    setMessages(messageCache.current);
+  }
   useEffect(() => () => {
     for (const url of previews.current) URL.revokeObjectURL(url);
     previews.current.clear();
   }, []);
   useEffect(() => {
     let active = true;
-    const refresh = () => api<Message[]>(endpoint).then(value => {
+    generation.current += 1;
+    let initialized = false;
+    messageCache.current = []; setMessages([]); setOlder(null); olderRef.current = null;
+    const refresh = () => api<MessagePage>(endpoint + "?paged=true").then(value => {
       if (!active) return;
-      setMessages(value); setReadError("");
+      latest(value); setReadError("");
+      if (!initialized) { setOlder(value.next_before); olderRef.current = value.next_before; initialized = true; }
       if (document.visibilityState === "visible" && document.hasFocus()) {
         api<{ changed: boolean }>(`/auth/notifications/${token ? "customer" : "company"}/read-report`, "POST", { report: token || feedbackId })
           .then(result => { if (result.changed) window.dispatchEvent(new Event("bugbrief-notifications-updated")); }).catch(() => {});
       }
-    }).catch(e => { if (active) { setMessages([]); setReadError(e.message); } });
+    }).catch(e => { if (active) { setReadError(e.message); if ([401, 403, 404].includes(e.status)) {
+      generation.current += 1; initialized = false; messageCache.current = []; setMessages([]); setOlder(null); olderRef.current = null;
+    } } });
     void refresh();
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener("focus", refresh);
@@ -61,6 +89,17 @@ export default function Conversation({ feedbackId, token }: { feedbackId?: strin
   return <section className="conversation-card" aria-label="Report conversation">
     <span className="eyebrow">KEEP THE DETAILS TOGETHER</span><h3>Conversation</h3>
     <p>{token ? "Reply to the team here. Your replies stay with this report." : "Reply to the customer or leave a private note for your team."}</p>
+    {older && <button type="button" className="secondary-button" disabled={loadingOlder || !!readError} onClick={async () => {
+      const epoch = generation.current; const cursor = olderRef.current;
+      if (!cursor) return;
+      setLoadingOlder(true);
+      try {
+        const value = await api<MessagePage>(endpoint + `?paged=true&before=${encodeURIComponent(cursor)}`);
+        if (epoch !== generation.current) return;
+        messageCache.current = mergeMessages(messageCache.current, value.items); setMessages(messageCache.current);
+        setOlder(value.next_before); olderRef.current = value.next_before;
+      } catch (e) { setReadError((e as Error).message); } finally { setLoadingOlder(false); }
+    }}>{loadingOlder ? "Loading earlier replies…" : "Load older replies"}</button>}
     <div className="message-list" aria-live="polite">
       {!messages.length && <p className="empty-conversation">No replies yet. Start the conversation below.</p>}
       {messages.map(message => <article key={message.id} className={`report-message ${message.visibility === "internal" ? "internal-message" : ""}`}>
@@ -78,9 +117,10 @@ export default function Conversation({ feedbackId, token }: { feedbackId?: strin
         <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString()}</time>
       </article>)}
     </div>
-    <small>Showing up to 100 recent messages.</small>
+    <small>{messages.length} message{messages.length === 1 ? "" : "s"} loaded{older ? " · Earlier replies available" : ""}.</small>
+    {historyNotice && <p role="status">{historyNotice}</p>}
     {readError && <div className="alert error" role="alert">{readError}</div>}
-    <form onSubmit={async event => {
+    {readOnly ? <p className="permission-notice">You have view-only access. Ask the workspace owner for Contributor access to reply.</p> : <form onSubmit={async event => {
       event.preventDefault();
       if (reviewOpen) return;
       setBusy(true); setSendError("");
@@ -88,7 +128,8 @@ export default function Conversation({ feedbackId, token }: { feedbackId?: strin
       const signature = JSON.stringify({ body, visibility, attachments });
       if (pending.current?.signature !== signature) pending.current = { signature, id: crypto.randomUUID() };
       try {
-        setMessages(await api<Message[]>(endpoint, "POST", { body, visibility, attachments, request_id: pending.current.id }));
+        const sent = await api<Message[]>(endpoint, "POST", { body, visibility, attachments, request_id: pending.current.id });
+        latest({ items: sent, next_before: sent.length === 100 ? sent[0].id : null });
         pending.current = null;
         setBody("");
         for (const image of images) { URL.revokeObjectURL(image.preview); previews.current.delete(image.preview); }
@@ -127,6 +168,6 @@ export default function Conversation({ feedbackId, token }: { feedbackId?: strin
       <small>Up to 3 PNG/JPEG screenshots per reply, 2 MiB each. Add a caption if useful. Unsent images stay in this tab and are lost on reload. Screenshots are not analyzed automatically.</small>
       {sendError && <div className="alert error" role="alert">{sendError}</div>}
       <button className="primary-button" disabled={busy || reviewOpen || !body.trim()}>{busy ? "Saving…" : visibility === "internal" ? "Save private note" : "Send reply"}</button>
-    </form>
+    </form>}
   </section>;
 }

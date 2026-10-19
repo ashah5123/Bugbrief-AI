@@ -46,6 +46,7 @@ import EvidencePanel from "./EvidencePanel";
 import ShareProject from "./ShareProject";
 import CustomerContext from "./CustomerContext";
 import DeleteReportButton from "./DeleteReportButton";
+import ArchiveReportButton from "./ArchiveReportButton";
 import { VerificationBanner } from "./AccountSecurity";
 import WorkflowPanel, { WorkflowBadge, workflowLabels } from "./WorkflowPanel";
 import { EmployeeContext } from "./AgencyGate";
@@ -184,7 +185,12 @@ export default function App() {
   }, []);
   const [progressFilter, setProgressFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [items, setItems] = useState<Feedback[]>([]);
+  const [allItems, setItems] = useState<Feedback[]>([]);
+  const items = allItems.filter(item => !item.archived_at);
+  const [archiveView, setArchiveView] = useState(false);
+  const permissions = (projectId: string) => projects.find(project => project.id === projectId)?.permissions;
+  const canWork = (projectId: string) => !employee || !!permissions(projectId)?.work;
+  const canDelete = (projectId: string) => !employee || !!permissions(projectId)?.delete;
   const [health, setHealth] = useState<Health | null>(null);
   const [draft, setDraft] = useState<Draft>(readDraft);
   const [activeId, setActiveId] = useState<string | null>(() =>
@@ -265,7 +271,7 @@ export default function App() {
     }
     const [p, f, h, e] = await Promise.all([
       api<Project[]>("/projects"),
-      api<Feedback[]>("/feedback"),
+      api<Feedback[]>("/feedback?include_archived=true"),
       api<Health>("/health"),
       api<IssueEmployee[]>("/employees"),
     ]);
@@ -283,7 +289,7 @@ export default function App() {
     setSelected((previous) => {
       if (!previous) return null;
       const latest = f.find(item => item.id === previous.id);
-      return latest ? { ...previous, workflow: latest.workflow } : null;
+      return latest ? { ...previous, workflow: latest.workflow, archived_at: latest.archived_at } : null;
     });
     setActiveId((previous) =>
       previous && !f.some((item) => item.id === previous) ? null : previous,
@@ -331,7 +337,7 @@ export default function App() {
         JSON.stringify({ version: selected.version, report: editReport }),
       );
   }, [editReport, selected]);
-  const activeFeedback = items.find((item) => item.id === activeId) || null;
+  const activeFeedback = allItems.find((item) => item.id === activeId) || null;
   const hasSavedEvidence = !!(
     activeFeedback?.attachments.length || activeFeedback?.clarifications.length
   );
@@ -344,6 +350,10 @@ export default function App() {
     device: "Device",
     browser: "Browser",
     captured_context: "Captured submission context",
+    "guided:goal": "Customer’s goal",
+    "guided:expected": "Customer’s expected result",
+    "guided:steps": "Customer’s steps",
+    "guided:frequency": "Customer’s issue frequency",
   };
   selected?.clarifications.forEach((entry, index) => {
     evidenceLabels[`clarification:${entry.id}`] =
@@ -408,8 +418,9 @@ export default function App() {
     setProgressFilter("all"); setAssigneeFilter("all"); setPriorityFilter("all");
     setCustomerFilter("all"); setAttentionFilter("all");
   }
-  const filtered = items.filter(
+  const filtered = allItems.filter(
     (i) =>
+      !!i.archived_at === archiveView &&
       (view !== "reports" || i.report) &&
       (projectFilter === "all" || i.project_id === projectFilter) &&
       (statusFilter === "all" || i.status === statusFilter) &&
@@ -430,6 +441,7 @@ export default function App() {
   ).sort((a, b) => compareTriage(a, b, sort, today));
   function navigate(next: View) {
     setView(next);
+    setArchiveView(false);
     setMobileNav(false);
     setSearch("");
     setStatusFilter("all");
@@ -574,19 +586,23 @@ export default function App() {
     const report = new URLSearchParams(location.search).get("report");
     if (!report || loading || openedAlert.current) return;
     openedAlert.current = true;
-    const item = items.find((value) => value.id === report);
+    const item = allItems.find((value) => value.id === report);
     if (item) openItem(item);
     else
       setError(
         "This report is unavailable or your project access has been removed.",
       );
-  }, [loading, items]);
+  }, [loading, allItems]);
   function share(id?: string) {
     if (!projects.length) {
       setModal("project");
       return;
     }
-    setSharing(id || projects[0].id);
+    const allowed = projects.filter(project => !employee || project.permissions?.manage);
+    if (!allowed.length || (id && !allowed.some(project => project.id === id))) {
+      setError("Project sharing requires Manager access. Ask the workspace owner."); return;
+    }
+    setSharing(id || allowed[0].id);
   }
   function startFresh() {
     setActiveId(null);
@@ -1005,6 +1021,8 @@ export default function App() {
                       </select>
                       <ChevronDown size={15} />
                     </div>
+                    <fieldset className="permission-controls" disabled={!canWork(draft.project_id)}>
+                    {!canWork(draft.project_id) && <p className="permission-notice">Viewer access: you can read reports and conversations. Ask the owner for Contributor access to make changes.</p>}
                     <div className="feedback-label-row">
                       <label htmlFor="feedback-text">
                         Client feedback{" "}
@@ -1122,11 +1140,13 @@ export default function App() {
                         </button>
                       </span>
                     </label>
+                    </fieldset>
                   </div>
                   {activeFeedback && (
                     <WorkflowPanel
                       key={activeFeedback.id}
                       feedbackId={activeFeedback.id}
+                      readOnly={!canWork(activeFeedback.project_id)}
                       hasCustomer={!!activeFeedback.customer}
                       workflow={activeFeedback.workflow}
                       employees={employees.filter((employee) =>
@@ -1141,10 +1161,8 @@ export default function App() {
                   )}
                   <div className="capture-footer">
                     {activeFeedback ? (
-                      <DeleteReportButton
-                        disabled={busy}
-                        onDelete={() => deleteReport(activeFeedback)}
-                      />
+                      <><ArchiveReportButton endpoint={`/feedback/${activeFeedback.id}`} archived={!!activeFeedback.archived_at} disabled={busy || !canWork(activeFeedback.project_id)} onChange={async () => { await refresh(); }} />
+                      <DeleteReportButton disabled={busy || !canDelete(activeFeedback.project_id)} onDelete={() => deleteReport(activeFeedback)} /></>
                     ) : (
                       <span>
                         <ShieldCheck size={15} /> Your original feedback stays
@@ -1155,7 +1173,7 @@ export default function App() {
                       <button
                         className="secondary-button"
                         disabled={
-                          busy ||
+                          busy || !canWork(draft.project_id) ||
                           (draft.text.trim().length < 3 && !hasSavedEvidence)
                         }
                         onClick={() => submit(false)}
@@ -1165,7 +1183,7 @@ export default function App() {
                       <button
                         className="primary-button generate-button"
                         disabled={
-                          busy ||
+                          busy || !canWork(draft.project_id) ||
                           !consent ||
                           imagesNeedAnalysis ||
                           (draft.text.trim().length < 3 && !hasSavedEvidence)
@@ -1293,6 +1311,8 @@ export default function App() {
             </section>
           ) : view === "mywork" ? null : (
             <section className="recent-section">
+              <div className="archive-view-toggle"><button className="secondary-button" aria-pressed={!archiveView} onClick={() => setArchiveView(false)}>Active reports</button><button className="secondary-button" aria-pressed={archiveView} onClick={() => setArchiveView(true)}>Archived reports</button></div>
+              {archiveView && <p className="permission-notice">Archived reports retain their history and replies. Restore them to return to active lists. Archiving does not resolve an issue or hide it from its customer.</p>}
               <div className="section-heading">
                 <div>
                   <h2>
@@ -1300,7 +1320,7 @@ export default function App() {
                       ? "Your bug reports"
                       : "Recent feedback"}
                     <span className="count-badge">
-                      {view === "reports" ? reports.length : items.length}
+                      {archiveView ? allItems.filter(item => item.archived_at && (view !== "reports" || item.report)).length : view === "reports" ? reports.length : items.length}
                     </span>
                   </h2>
                   <p>
@@ -1327,7 +1347,7 @@ export default function App() {
                     >
                       All {view === "reports" ? "reports" : "feedback"}
                       <span>
-                        {view === "reports" ? reports.length : items.length}
+                        {archiveView ? allItems.filter(item => item.archived_at && (view !== "reports" || item.report)).length : view === "reports" ? reports.length : items.length}
                       </span>
                     </button>
                     <button
@@ -1568,7 +1588,7 @@ export default function App() {
       </div>
       {sharing && (
         <ShareProject
-          projects={projects}
+          projects={projects.filter(project => !employee || project.permissions?.manage)}
           initialId={sharing}
           close={closeSharing}
         />
@@ -1809,6 +1829,7 @@ export default function App() {
               <WorkflowPanel
                 key={selected.id}
                 feedbackId={selected.id}
+                readOnly={!canWork(selected.project_id)}
                 hasCustomer={!!selected.customer}
                 workflow={selected.workflow}
                 employees={employees.filter((employee) =>
@@ -1816,7 +1837,7 @@ export default function App() {
                 )}
                 onChange={(value) => updateWorkflow(selected.id, value)}
               />
-              {selected.proposal && (
+              {selected.proposal && canWork(selected.project_id) && (
                 <div className="proposal-banner">
                   <Sparkles size={19} />
                   <div>
@@ -1851,6 +1872,7 @@ export default function App() {
                   </div>
                 </div>
               )}
+              <fieldset className="permission-controls" disabled={!canWork(selected.project_id)}>
               {editorTab === "source" ? (
                 <>
                   <span className="eyebrow">ORIGINAL CLIENT FEEDBACK</span>
@@ -2118,15 +2140,14 @@ export default function App() {
                   </>
                 )
               )}
+              </fieldset>
             </div>
             <div className="drawer-footer">
-              <DeleteReportButton
-                disabled={busy}
-                onDelete={() => deleteReport(selected)}
-              />
+              <ArchiveReportButton endpoint={`/feedback/${selected.id}`} archived={!!selected.archived_at} disabled={busy || !canWork(selected.project_id)} onChange={async () => { await refresh(); }} />
+              <DeleteReportButton disabled={busy || !canDelete(selected.project_id)} onDelete={() => deleteReport(selected)} />
               <button
                 className="primary-button"
-                disabled={busy || !editReport}
+                disabled={busy || !editReport || !canWork(selected.project_id)}
                 onClick={saveReport}
               >
                 {busy ? (

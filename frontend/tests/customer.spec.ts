@@ -46,6 +46,7 @@ test("anonymous customer submits through embedded button; agency receives captur
       "I clicked Pay now but nothing happened. I expected the payment form.",
     );
   await form.getByLabel("Your name").fill("Test customer");
+  await form.getByLabel("Include browser, language, timezone and screen dimensions").check();
   await form.getByLabel("This is the browser I used").check();
   // A fake parent context for another origin must not replace the real captured URL.
   await anonymous.evaluate(() => {
@@ -342,6 +343,7 @@ test("widget captures a separate website origin and excludes URL secrets", async
   await form
     .getByLabel("What went wrong?", { exact: true })
     .fill("Pay now is unresponsive on this test page.");
+  await form.getByLabel("Include browser, language, timezone and screen dimensions").check();
   await form.getByRole("button", { name: "Continue", exact: true }).click();
   await form
     .getByRole("button", { name: "Send to the agency", exact: true })

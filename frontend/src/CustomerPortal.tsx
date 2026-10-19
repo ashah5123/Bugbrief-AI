@@ -16,9 +16,11 @@ import {
 import { api } from "./types";
 import { VerificationBanner } from "./AccountSecurity";
 import DeleteReportButton from "./DeleteReportButton";
+import ArchiveReportButton from "./ArchiveReportButton";
 import { WorkflowBadge } from "./WorkflowPanel";
 import {
   savedSubmissions,
+  rememberSubmission,
   forgetSubmission,
   type SavedSubmission,
 } from "./customerStorage";
@@ -103,6 +105,7 @@ function Reports({
             </div>
             <ArrowRight size={17} />
           </a>
+          {item.stage === "submitted" && <ArchiveReportButton endpoint={`/public/submissions/${item.access_token}`} archived={!!item.archived_at} onChange={async value => { if (!account) rememberSubmission(value); await onChange(); }} />}
           <DeleteReportButton
             customer
             onDelete={async () => {
@@ -140,7 +143,9 @@ export default function CustomerPortal({
 }) {
   const [session, setSession] = useState<Session | null>(null);
   const accountIdentity = useRef<string | null>(null);
-  const [items, setItems] = useState<SavedSubmission[]>([]);
+  const [allItems, setItems] = useState<SavedSubmission[]>([]);
+  const items = allItems.filter(item => !item.archived_at);
+  const [archiveView, setArchiveView] = useState(false);
   const [projects, setProjects] = useState<CustomerProject[]>([]);
   const [accountReady, setAccountReady] = useState(false);
   const [legacy, setLegacy] = useState(savedSubmissions);
@@ -163,7 +168,7 @@ export default function CustomerPortal({
       return;
     }
     const [reports, connected] = await Promise.all([
-      api<SavedSubmission[]>("/customer/reports"),
+      api<SavedSubmission[]>("/customer/reports?include_archived=true"),
       api<CustomerProject[]>("/customer/projects"),
     ]);
     setItems(reports);
@@ -426,8 +431,9 @@ export default function CustomerPortal({
                   </p>
                 </div>
               </div>
+              <div className="archive-view-toggle"><button className="secondary-button" aria-pressed={!archiveView} onClick={() => setArchiveView(false)}>Active reports</button><button className="secondary-button" aria-pressed={archiveView} onClick={() => setArchiveView(true)}>Archived reports</button></div>
               <Reports
-                items={legacy}
+                items={legacy.filter(item => !!item.archived_at === archiveView)}
                 onChange={() => setLegacy(savedSubmissions())}
               />
             </section>
@@ -500,12 +506,13 @@ export default function CustomerPortal({
           <div className="section-heading">
             <div>
               <h2>
-                <span id="your-reports">Your reports</span> <span className="count-badge">{items.length}</span>
+                <span id="your-reports">Your reports</span> <span className="count-badge">{allItems.filter(item => !!item.archived_at === archiveView).length}</span>
               </h2>
               <p>Available across browsers whenever you sign in.</p>
             </div>
           </div>
-          <Reports account items={items} onChange={refresh} />
+          <div className="archive-view-toggle"><button className="secondary-button" aria-pressed={!archiveView} onClick={() => setArchiveView(false)}>Active reports</button><button className="secondary-button" aria-pressed={archiveView} onClick={() => setArchiveView(true)}>Archived reports</button></div>
+          <Reports account items={allItems.filter(item => !!item.archived_at === archiveView)} onChange={refresh} />
         </section>
         <section className="my-reports">
           <div className="section-heading">
@@ -587,7 +594,7 @@ export default function CustomerPortal({
         </section>
         {legacy.filter(
           (item) =>
-            !items.some((saved) => saved.access_token === item.access_token),
+            !allItems.some((saved) => saved.access_token === item.access_token),
         ).length > 0 && (
           <section className="my-reports">
             <div className="section-heading">
@@ -600,7 +607,7 @@ export default function CustomerPortal({
               {legacy
                 .filter(
                   (item) =>
-                    !items.some(
+                    !allItems.some(
                       (saved) => saved.access_token === item.access_token,
                     ),
                 )

@@ -20,13 +20,14 @@ class Capability(StrictModel):
 
 
 @router.get('/reports')
-def reports(account=Depends(require_customer), db: Session = Depends(get_db)):
+def reports(include_archived: bool = False, account=Depends(require_customer), db: Session = Depends(get_db)):
     records = db.scalars(select(CustomerSubmission).join(Feedback, Feedback.id == CustomerSubmission.feedback_id)
-        .where(CustomerSubmission.account_id == account.id, CustomerSubmission.stage != 'deleted', Feedback.deleted_at.is_(None))
+        .where(CustomerSubmission.account_id == account.id, CustomerSubmission.stage != 'deleted', Feedback.deleted_at.is_(None),
+               True if include_archived else CustomerSubmission.archived_at.is_(None))
         .order_by(CustomerSubmission.created_at.desc())).all()
     records = [item for item in records if customer_can_access(db, account.id, db.get(IntakeLink, item.link_id).project_id)]
     return [{'access_token': item.access_token, 'project_name': db.get(Project, db.get(IntakeLink, item.link_id).project_id).name,
-             'reference': item.feedback_id[:8].upper(), 'stage': item.stage,
+             'reference': item.feedback_id[:8].upper(), 'stage': item.stage, 'archived_at': item.archived_at,
              'summary': db.get(Feedback, item.feedback_id).text[:160],
              'workflow': progress_snapshot(db, db.get(Feedback, item.feedback_id), public=True, history=False) if item.stage == 'submitted' else None} for item in records]
 

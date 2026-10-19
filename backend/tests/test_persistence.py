@@ -472,3 +472,103 @@ with TestClient(app) as c:
 """
     for code in (write,read):
         subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+
+
+def test_guided_upgrade_preserves_legacy_answers_and_new_details_survive_restart(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    db_path = tmp_path/'guided.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{db_path}', 'AGENCY_ACCESS_CODE': 'guided-restart-code'}
+    def migrate(target):
+        subprocess.run([sys.executable, '-m', 'alembic', '-c', 'backend/alembic.ini', 'upgrade', target],
+                       cwd=root, env=env, check=True, capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+    migrate('0014')
+    with sqlite3.connect(db_path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at,team_name,customer_access) VALUES ('p','Legacy project','','old','','link')")
+        db.execute("INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Original customer words','','','','draft',1,'old','old')")
+        db.execute("INSERT INTO intake_links (id,project_id,token,created_at) VALUES ('l','p','legacy-project-link','old')")
+        db.execute("INSERT INTO customer_submissions (id,link_id,feedback_id,access_token,client_nonce,reporter_name,context,stage,created_at) VALUES ('c','l','f','legacy-private-link','legacy-nonce-1234567890','Customer','{}','draft','old')")
+    migrate('head')
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    base='/api/public/submissions/legacy-private-link'
+    item=c.get(base).json()
+    assert item['text']=='Original customer words' and item['guided_details'] is None
+    r=c.put(base,json={'text':item['text'],'draft_version':item['draft_version'],'guided_details':{'goal':'Order dinner','expected':'Checkout opens','steps':'Open cart','frequency':'once'}})
+    assert r.status_code==200 and r.json()['guided_details']['goal']=='Order dinner'
+    assert c.post(base+'/submit',json={}).status_code==200
+""")
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    item=c.get('/api/public/submissions/legacy-private-link').json()
+    assert item['stage']=='submitted' and item['guided_details']['frequency']=='once'
+    c.headers['X-Agency-Key']='guided-restart-code'
+    report=c.get('/api/feedback/f').json()
+    assert report['text']=='Original customer words'
+    assert report['customer']['guided_details']['expected']=='Checkout opens'
+    assert c.delete('/api/feedback/f').status_code==200
+""")
+    with sqlite3.connect(db_path) as db:
+        import json
+        assert json.loads(db.execute("SELECT guided_details FROM customer_submissions WHERE id='c'").fetchone()[0]) is None
+        assert db.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
+        assert db.execute('PRAGMA foreign_key_check').fetchall() == []
+
+
+def test_safeguards_upgrade_preserves_rows_and_roles_archives_versions_survive_restart(tmp_path):
+    import sqlite3
+    root=Path(__file__).resolve().parents[2]
+    path=tmp_path/'safeguards.db'
+    env={**os.environ,'DATABASE_URL':f'sqlite:///{path}','AGENCY_ACCESS_CODE':'safeguards-restart-code'}
+    def migrate(target):
+        subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade',target],cwd=root,env=env,check=True,capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+    migrate('0015')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects(id,name,url,created_at,team_name,customer_access) VALUES ('p','Retained project','','old','','link')")
+        db.execute("INSERT INTO feedback(id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Retained words','','','','draft',1,'old','old')")
+        db.execute("INSERT INTO intake_links(id,project_id,token,created_at) VALUES ('l','p','legacy-link','old')")
+        db.execute("INSERT INTO customer_submissions(id,link_id,feedback_id,access_token,client_nonce,reporter_name,context,stage,created_at,guided_details) VALUES ('s','l','f','legacy-token','legacy-nonce-1234567890','Customer','{}','draft','old',?)", ('{"expected":"Retained expectation"}',))
+        db.execute("INSERT INTO employee_accounts(id,email,name,password_hash,created_at) VALUES ('e','employee@example.test','Employee','unused','old')")
+        db.execute("INSERT INTO employee_projects(employee_id,project_id,created_at) VALUES ('e','p','old')")
+    migrate('head')
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='safeguards-restart-code'
+    item=c.get('/api/public/submissions/legacy-token').json()
+    assert item['draft_version']==1 and item['guided_details']['expected']=='Retained expectation'
+    access=c.get('/api/projects/p/access').json()['employees'][0]
+    assert access['role']=='contributor' and access['can_delete'] is False
+    r=c.put('/api/public/submissions/legacy-token',json={'text':'Updated words','draft_version':1})
+    assert r.status_code==200 and r.json()['draft_version']==2
+    assert c.post('/api/public/submissions/legacy-token/submit',json={}).status_code==200
+    assert c.patch('/api/feedback/f/archive',json={'archived':True}).status_code==200
+    assert c.patch('/api/public/submissions/legacy-token/archive',json={'archived':True}).status_code==200
+    assert c.patch('/api/projects/p/members/employee/e',json={'role':'manager','can_delete':True}).status_code==200
+""")
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='safeguards-restart-code'
+    assert c.get('/api/feedback').json()==[]
+    assert len(c.get('/api/feedback?include_archived=true').json())==1
+    item=c.get('/api/public/submissions/legacy-token').json()
+    assert item['draft_version']==2 and item['archived_at'] and item['text']=='Updated words'
+    access=c.get('/api/projects/p/access').json()['employees'][0]
+    assert access['role']=='manager' and access['can_delete'] is True
+    assert c.patch('/api/feedback/f/archive',json={'archived':False}).status_code==200
+    assert c.get('/api/public/submissions/legacy-token').json()['archived_at']
+""")
+    with sqlite3.connect(path) as db:
+        assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+        assert db.execute('PRAGMA foreign_key_check').fetchall()==[]

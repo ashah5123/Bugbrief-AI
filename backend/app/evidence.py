@@ -40,13 +40,19 @@ def serialize(item, db=None):
         result['attachments'] = [serialize(a) for a in attachments(db, item.id)]
         result['clarifications'] = [serialize(c) for c in clarifications(db, item.id)]
         customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
-        result['customer'] = {'id': customer.account_id or customer.id, 'reporter_name': customer.reporter_name, 'stage': customer.stage, 'context': customer.context, 'submitted_at': customer.submitted_at} if customer else None
+        result['customer'] = {'id': customer.account_id or customer.id, 'reporter_name': customer.reporter_name, 'stage': customer.stage, 'context': customer.context, 'guided_details': customer.guided_details, 'submitted_at': customer.submitted_at} if customer else None
     return result
 
 def report_evidence(db, item):
     evidence = {'feedback': item.text, 'page_url': item.page_url, 'device': item.device, 'browser': item.browser}
     customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
-    if customer and customer.context:
+    if customer and customer.guided_details:
+        for key in ('goal', 'expected', 'steps', 'frequency'):
+            value = customer.guided_details.get(key)
+            if value:
+                labels = {'every_time': 'Every time', 'sometimes': 'Sometimes', 'once': 'Only once', 'not_sure': 'Not sure'}
+                evidence[f'guided:{key}'] = labels.get(value, value) if key == 'frequency' else value
+    if customer and customer.context and customer.context.get('user_agent'):
         import json
         qualifier = 'Customer confirmed this is the issue browser.' if customer.context.get('same_browser_confirmed') else 'Captured in the submission browser only; NOT confirmed as the issue browser or original issue viewport.'
         evidence['captured_context'] = qualifier + ' ' + json.dumps(customer.context, ensure_ascii=False)

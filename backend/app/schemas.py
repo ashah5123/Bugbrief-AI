@@ -54,7 +54,7 @@ class FeedbackIn(StrictModel):
 class Claim(StrictModel):
     text: str = Field(min_length=1, max_length=2000)
     evidence_quote: str = Field(min_length=1, max_length=2000)
-    source: str = Field(pattern=r'^(feedback|page_url|device|browser|captured_context|clarification:[a-f0-9-]{36}|screenshot:[a-f0-9-]{36}:[0-9]{1,2})$')
+    source: str = Field(pattern=r'^(feedback|page_url|device|browser|captured_context|guided:(goal|expected|steps|frequency)|clarification:[a-f0-9-]{36}|screenshot:[a-f0-9-]{36}:[0-9]{1,2})$')
 
 class BugReport(StrictModel):
     title: str = Field(min_length=3, max_length=180)

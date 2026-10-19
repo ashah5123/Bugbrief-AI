@@ -4,6 +4,7 @@ export type SavedSubmission = {
   project_name: string;
   reference: string;
   stage: string;
+  archived_at?: string | null;
   summary?: string;
   account_owned?: boolean;
   workflow?: IssueWorkflow | null;
@@ -39,6 +40,7 @@ export function rememberSubmission(item: SavedSubmission) {
           project_name: item.project_name,
           reference: item.reference,
           stage: item.stage,
+          archived_at: item.archived_at,
         },
         ...items,
       ]),

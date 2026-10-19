@@ -39,7 +39,7 @@ Stop only BugBrief’s backend, preserve `backend/.env`, and back up `data/bugbr
 .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Restart the backend with the command below. The migration upgrades to `0010` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
+Restart the backend with the command below. The migration upgrades to `0016` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
 
 ## Run
 
@@ -61,8 +61,8 @@ Open **http://127.0.0.1:5173** and choose **I’m with the company** or **I’m 
 
 1. Sign into the agency workspace with the code in `data/agency-access.txt`.
 2. Click **Collect customer feedback**, select a project and open **Try the embedded demo**. Alternatively open the customer form link in a private browser window.
-3. On the demo site, try the intentionally unresponsive Pay now button. Open **Report a problem**. The widget captures that page's origin/path and viewport; it excludes query strings and fragments. The customer can omit browser details and must separately confirm whether this is the browser used for the issue.
-4. Describe the problem and optionally attach reviewed/redacted screenshots. Opt into external processing if appropriate. Continue to receive up to three genuine follow-up questions; answer what you know, then review and **Send to the agency**.
+3. On the demo site, try the intentionally unresponsive Pay now button. Open **Report a problem**. The widget captures that page's origin/path and viewport; it excludes query strings and fragments. Browser details stay off until the customer opts in; they must separately confirm whether this is the browser used for the issue.
+4. Describe the problem, then optionally add your goal, expected result, frequency and steps. Attach reviewed/redacted screenshots if useful. Opt into external processing if appropriate. Continue to receive up to three genuine follow-up questions; answer what you know, then review and **Send to the agency**.
 5. Return to the agency inbox. It refreshes on tab focus and every 15 seconds. Open the customer submission to review its original words, answers, captured context and revised report proposal. Apply the proposal only after checking the evidence.
 
 The local demo runs on this Mac. **A localhost link is not reachable by remote customers.** No site was deployed publicly. External customer use needs a reachable HTTPS deployment and the remaining production-readiness work below.
@@ -78,6 +78,34 @@ To embed the button on a website you control, set the project's website URL in t
 5. Filter the company inbox by progress and assigned employee. **Open issues** counts unresolved issues. Brief draft/review status remains separate from issue progress, so editing or regenerating a report does not reopen or reset its issue.
 
 Starting work, marking ready to retest, or resolving requires an assigned employee. Direct New → Resolved transitions are rejected. Progress uses a separate version so stale updates cannot overwrite another employee’s work, and it does not consume hosted-processing quota. Employees manage progress; customers can confirm or reject the current ready-to-retest fix. Progress does not automatically modify application code. In-app notifications and optional email alerts now cover replies, progress updates and retest requests.
+
+## Draft conflicts, conversation history and report archives
+
+Customer draft saves now include the version they were based on. If another tab changes the draft, saving shows a conflict instead of replacing those answers. **Load latest draft** preserves an unsaved copy for comparison; **Use my copy for editing** is an explicit choice to review and save that copy over the latest draft. Local recovery remains optional when browser storage is unavailable. Exact retries of the same committed fields are safe. API clients updating a customer draft must echo its `draft_version`; missing versions receive 428 and conflicting changes receive 409.
+
+Conversations provide **Load older replies** in batches of 100. Loading history keeps private company notes out of customer views, and refreshes/new replies retain the loaded history. If a burst of new replies has no overlap with the loaded page, the conversation resets to the newest page with a notice so earlier pages can be loaded again without an unseen gap. Existing API clients can still request the original latest-message array; `?paged=true` returns items and a `next_before` cursor.
+
+Use **Archive report** to hide a report from active lists, then **Archived reports → Restore report** to bring it back. The company archive applies to the workspace; a customer's archive applies only to that customer's report list. These choices are independent. Archiving keeps the report, screenshots, replies and progress, does not resolve the issue, and allows further replies and notifications. Permanent deletion remains a separate confirmed action. Company archives can include drafts; customers can archive submitted reports.
+
+## Employee permissions
+
+In **Team & account → Project access**, the owner chooses each employee's project role:
+
+| Role | Allowed actions |
+| --- | --- |
+| Viewer | Read project reports, evidence and conversations |
+| Contributor | Viewer access plus replies, report/evidence edits, progress, triage, shared issues and archiving |
+| Manager | Contributor access plus project settings and feedback-link management |
+
+**Allow permanent deletion** is a separate grant and is off by default, including for Managers. Only the workspace owner can assign roles, grant deletion or change membership. The server checks permissions on direct API writes; disabled controls are only the interface. Employees can still create a project and become its Manager. Upgrading existing memberships makes them Contributors without permanent deletion; the owner can grant additional access as needed.
+
+## Guided customer bug reports
+
+The customer form asks what the customer was trying to do, what went wrong, what they expected, and how often it happens. An optional steps section helps record the actions needed to reproduce the issue. Only a description or reviewed screenshot is needed to continue; missing answers remain unknown. The customer can preview all supplied details before sending.
+
+Answers recover with the existing local/server draft and private return link. The company sees the original description and a separate **Details from the customer** summary, including in the original-feedback and evidence views of a prepared report. Guided answers can be cited as evidence when the customer explicitly enables the optional external check. Capturing, reviewing and sending the form work without that check.
+
+Browser details are off by default. Customers can opt in, preview the shared dimensions/language/source, and separately confirm the issue browser. Turning sharing off and saving removes that context from the current draft. The affected page remains a separate editable field; embedded capture excludes query strings and fragments. Existing report ownership, project access and deletion rules apply to guided answers too.
 
 ## Screenshots in report replies
 

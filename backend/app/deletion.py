@@ -30,12 +30,15 @@ def erase_feedback(db, app, feedback):
     if customer:
         customer.reporter_name = ''
         customer.context = {}
+        customer.guided_details = None
+        customer.archived_at = None
         customer.stage = 'deleted'
         customer.processing_started_at = None
         customer.processing_error = None
         customer.consented_at = None
         customer.submitted_at = None
     feedback.text = ''
+    feedback.archived_at = None
     feedback.page_url = ''
     feedback.device = ''
     feedback.browser = ''

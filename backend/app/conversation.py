@@ -3,7 +3,7 @@ from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import Field, field_validator
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_, and_
 from sqlalchemy.orm import Session
 from .db import get_db
 from .models import ReportMessage, Feedback, IssueProgress, IssueEvent, now
@@ -32,14 +32,23 @@ class MessageInput(StrictModel):
         return value.strip()
 
 
-def messages(db, feedback_id, public=False):
+def messages(db, feedback_id, public=False, before=None, paged=False):
     query = select(ReportMessage).where(ReportMessage.feedback_id == feedback_id)
     if public:
         query = query.where(ReportMessage.visibility == 'public')
-    rows = db.scalars(query.order_by(ReportMessage.created_at.desc(), ReportMessage.id.desc()).limit(100)).all()
-    return [{'id': m.id, 'visibility': m.visibility, 'author_role': m.author_role,
+    if before:
+        cursor = db.get(ReportMessage, before)
+        if not cursor or cursor.feedback_id != feedback_id or (public and cursor.visibility != 'public'):
+            raise HTTPException(404, 'Conversation position is unavailable. Reload the conversation.')
+        query = query.where(or_(ReportMessage.created_at < cursor.created_at,
+            and_(ReportMessage.created_at == cursor.created_at, ReportMessage.id < cursor.id)))
+    rows = db.scalars(query.order_by(ReportMessage.created_at.desc(), ReportMessage.id.desc()).limit(101 if paged else 100)).all()
+    more = len(rows) > 100
+    rows = rows[:100]
+    items = [{'id': m.id, 'visibility': m.visibility, 'author_role': m.author_role,
              'author_name': m.author_name, 'body': m.body, 'created_at': m.created_at,
              'attachments': message_images(db, m.id)} for m in reversed(rows)]
+    return {'items': items, 'next_before': rows[-1].id if more else None} if paged else items
 
 
 def sent_submission(db, token, request):
@@ -50,9 +59,9 @@ def sent_submission(db, token, request):
 
 
 @router.get('/api/feedback/{feedback_id}/messages')
-def company_messages(feedback_id: str, db: Session = Depends(get_db)):
+def company_messages(feedback_id: str, before: str | None = None, paged: bool = False, db: Session = Depends(get_db)):
     visible_feedback(db, feedback_id)
-    return messages(db, feedback_id)
+    return messages(db, feedback_id, before=before, paged=paged)
 
 
 @router.post('/api/feedback/{feedback_id}/messages', status_code=201)
@@ -72,9 +81,9 @@ async def company_reply(feedback_id: str, data: MessageInput, request: Request, 
 
 
 @router.get('/api/public/submissions/{token}/messages')
-def customer_messages(token: str, request: Request, db: Session = Depends(get_db)):
+def customer_messages(token: str, request: Request, before: str | None = None, paged: bool = False, db: Session = Depends(get_db)):
     item = sent_submission(db, token, request)
-    return messages(db, item.feedback_id, public=True)
+    return messages(db, item.feedback_id, public=True, before=before, paged=paged)
 
 
 @router.post('/api/public/submissions/{token}/messages', status_code=201)

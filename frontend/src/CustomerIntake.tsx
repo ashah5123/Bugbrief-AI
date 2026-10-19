@@ -16,12 +16,14 @@ import {
   Trash2,
 } from "lucide-react";
 import ScreenshotReview from "./ScreenshotReview";
+import GuidedDetails, { emptyGuidedAnswers, frequencyLabels, type GuidedAnswers } from "./GuidedDetails";
 import { api, ApiError, type IssueWorkflow } from "./types";
 import { activateCustomer, browserStorage } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
 import Conversation from "./Conversation";
 import { CustomerProgress } from "./WorkflowPanel";
 import DeleteReportButton from "./DeleteReportButton";
+import ArchiveReportButton from "./ArchiveReportButton";
 import { rememberSubmission, forgetSubmission } from "./customerStorage";
 
 type Context = {
@@ -47,6 +49,9 @@ type Record = {
   stage: string;
   reporter_name: string;
   text: string;
+  guided_details: GuidedAnswers | null;
+  draft_version: number;
+  archived_at: string | null;
   page_url: string;
   context: Context;
   questions: string[];
@@ -103,13 +108,16 @@ export default function CustomerIntake({
   const [record, setRecord] = useState<Record | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [unsavedCopy, setUnsavedCopy] = useState<ReturnType<typeof fields> | null>(null);
   const [busy, setBusy] = useState(false);
   const [working, setWorking] = useState("");
   const [text, setText] = useState("");
+  const [guided, setGuided] = useState<GuidedAnswers>(emptyGuidedAnswers);
   const [pageUrl, setPageUrl] = useState("");
   const [name, setName] = useState("");
   const [context, setContext] = useState<Context>(browserContext);
-  const [includeContext, setIncludeContext] = useState(true);
+  const [includeContext, setIncludeContext] = useState(false);
   const [consent, setConsent] = useState(false);
   const [step, setStep] = useState<"form" | "questions" | "review" | "receipt">(
     "form",
@@ -154,12 +162,14 @@ export default function CustomerIntake({
     });
     if (restore) {
       setText(value.text);
+      setGuided(value.guided_details || emptyGuidedAnswers);
       setPageUrl(value.page_url);
       setName(value.reporter_name);
       setIncludeContext(!!value.context.user_agent);
       setContext(value.context.user_agent ? value.context : browserContext());
       signature.current = JSON.stringify({
         text: value.text,
+        guided_details: value.guided_details || emptyGuidedAnswers,
         page_url: value.page_url,
         reporter_name: value.reporter_name,
         context: value.context,
@@ -193,6 +203,7 @@ export default function CustomerIntake({
         } catch {}
         if (saved?.nonce) nonce.current = saved.nonce;
         if (saved?.answers) setAnswers(saved.answers);
+        if (saved?.unsaved_copy) setUnsavedCopy(saved.unsaved_copy);
         let restored = false;
         if (resumeToken || saved?.access_token) {
           let value: Record | null = null;
@@ -214,7 +225,10 @@ export default function CustomerIntake({
             restored = true;
             adopt(value, true);
             if (value.stage !== "submitted" && saved) {
+              if (saved.draft_version) setRecord({ ...value, draft_version: saved.draft_version });
               setText(saved.text ?? value.text);
+              setGuided(saved.guided_details ?? value.guided_details ?? emptyGuidedAnswers);
+              setIncludeContext(saved.includeContext ?? !!value.context.user_agent);
               setPageUrl(saved.page_url ?? value.page_url);
               setName(saved.name ?? value.reporter_name);
               if (saved.step) setStep(saved.step);
@@ -227,9 +241,10 @@ export default function CustomerIntake({
           setConfig(value);
           if (saved) {
             setText(saved.text || "");
+            setGuided(saved.guided_details || emptyGuidedAnswers);
             setPageUrl(saved.page_url || "");
             setName(saved.name || "");
-            setIncludeContext(saved.includeContext !== false);
+            setIncludeContext(saved.includeContext === true);
           }
         }
         initialized.current = true;
@@ -249,7 +264,10 @@ export default function CustomerIntake({
     const value = JSON.stringify({
       nonce: nonce.current,
       access_token: record?.access_token,
+      draft_version: record?.draft_version,
+      unsaved_copy: unsavedCopy,
       text,
+      guided_details: guided,
       page_url: pageUrl,
       name,
       includeContext,
@@ -261,7 +279,9 @@ export default function CustomerIntake({
       browserStorage.setItem(`bugbrief-customer-${record.access_token}`, value);
   }, [
     record,
+    unsavedCopy,
     text,
+    guided,
     pageUrl,
     name,
     includeContext,
@@ -355,6 +375,7 @@ export default function CustomerIntake({
           if ([401, 403, 404].includes(e.status)) {
             initialized.current = false;
             setText("");
+            setGuided(emptyGuidedAnswers);
             setName("");
             setAnswers({});
             setRecord(null);
@@ -371,23 +392,33 @@ export default function CustomerIntake({
   function fields() {
     return {
       text,
+      guided_details: guided,
       page_url: pageUrl.trim(),
       reporter_name: name.trim(),
       context: includeContext ? context : emptyContext,
     };
   }
-  async function ensureSaved() {
+  async function ensureSaved(checkVersion = false) {
+    if (draftConflict) throw new Error("Load the latest draft before saving. Your unsaved answers are still here.");
     if (pageUrl.trim() && !/^https?:\/\//.test(pageUrl.trim()))
       throw new Error("Use a full page URL starting with https:// or http://.");
     const draft = fields();
     const current = JSON.stringify(draft);
     if (record) {
-      if (current === signature.current) return record;
-      const value = await api<Record>(
+      if (current === signature.current && !checkVersion) return record;
+      let value: Record;
+      try { value = await api<Record>(
         `/public/submissions/${record.access_token}`,
         "PUT",
-        draft,
-      );
+        { ...draft, draft_version: record.draft_version },
+      ); } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && e.message.includes("already with the agency")) {
+          const sent = await api<Record>(`/public/submissions/${record.access_token}`);
+          if (sent.stage === "submitted") { adopt(sent, true); return sent; }
+        }
+        if (e instanceof ApiError && [409, 428].includes(e.status) && /Draft changed|draft version/.test(e.message)) setDraftConflict(true);
+        throw e;
+      }
       adopt(value);
       signature.current = current;
       return value;
@@ -408,7 +439,7 @@ export default function CustomerIntake({
       value = await api<Record>(
         `/public/submissions/${value.access_token}`,
         "PUT",
-        draft,
+        { ...draft, draft_version: value.draft_version },
       );
     }
     adopt(value);
@@ -418,7 +449,10 @@ export default function CustomerIntake({
       JSON.stringify({
         nonce: nonce.current,
         access_token: value.access_token,
+        draft_version: value.draft_version,
+        unsaved_copy: unsavedCopy,
         text,
+        guided_details: guided,
         page_url: pageUrl,
         name,
         includeContext,
@@ -449,7 +483,7 @@ export default function CustomerIntake({
     setError("");
     setBusy(true);
     try {
-      const current = await ensureSaved();
+      const current = await ensureSaved(true);
       const response = await fetch(
         `/api/public/submissions/${current.access_token}/attachments?reviewed=true&filename=${encodeURIComponent(filename)}`,
         { method: "POST", headers: { "Content-Type": blob.type }, body: blob },
@@ -505,7 +539,7 @@ export default function CustomerIntake({
   }
   async function send() {
     await act("Sending to the agency", async () => {
-      const current = await ensureSaved();
+      const current = await ensureSaved(true);
       const value = await api<Record>(
         `/public/submissions/${current.access_token}/submit`,
         "POST",
@@ -656,6 +690,23 @@ export default function CustomerIntake({
             {error}
           </div>
         )}
+        {draftConflict && record && <div className="draft-conflict" role="alert">
+          <h3>This draft changed in another tab.</h3>
+          <p>Your answers have not been replaced. Load the latest saved draft to compare; your unsaved copy will remain available below.</p>
+          <button className="secondary-button" disabled={busy} onClick={() => act("Loading latest draft", async () => {
+            const latest = await api<Record>(`/public/submissions/${record.access_token}`);
+            setUnsavedCopy(fields()); adopt(latest, true); setDraftConflict(false);
+          })}>Load latest draft</button>
+        </div>}
+        {unsavedCopy && <details className="draft-conflict"><summary>Your unsaved copy</summary>
+          <p>{unsavedCopy.text}</p><GuidedDetails details={unsavedCopy.guided_details} />
+          <p>{unsavedCopy.page_url}</p>
+          <button className="secondary-button" disabled={busy || record?.stage === "submitted"} onClick={() => {
+            setText(unsavedCopy.text); setGuided(unsavedCopy.guided_details); setPageUrl(unsavedCopy.page_url);
+            setName(unsavedCopy.reporter_name); setContext(unsavedCopy.context); setIncludeContext(!!unsavedCopy.context.user_agent);
+            setStep("form"); setUnsavedCopy(null);
+          }}>Use my copy for editing</button><p>Review before saving. Saving will replace the latest draft answers.</p>
+        </details>}
         {busy && (
           <div className="customer-working" role="status">
             <LoaderCircle className="spin" size={17} />
@@ -676,6 +727,18 @@ export default function CustomerIntake({
               </p>
             </div>
             <section className="customer-form-card">
+              <p className="guided-intro">A few short answers help the team reproduce the problem. Describe what happened, then add whatever else you know. The other details are optional.</p>
+              <label>
+                What were you trying to do?
+                <input
+                  aria-label="What were you trying to do?"
+                  maxLength={1000}
+                  disabled={busy}
+                  value={guided.goal}
+                  onChange={(event) => setGuided({ ...guided, goal: event.target.value })}
+                  placeholder="e.g. Complete my order"
+                />
+              </label>
               <label>
                 What went wrong?
                 <textarea
@@ -692,6 +755,45 @@ export default function CustomerIntake({
                 English, हिंदी, or a little of both.
                 <span>{text.length} / 8,000</span>
               </div>
+              <label>
+                What did you expect to happen?
+                <textarea
+                  aria-label="What did you expect to happen?"
+                  rows={2}
+                  maxLength={2000}
+                  disabled={busy}
+                  value={guided.expected}
+                  onChange={(event) => setGuided({ ...guided, expected: event.target.value })}
+                  placeholder="e.g. The payment form should open"
+                />
+              </label>
+              <label>
+                How often does it happen?
+                <select
+                  aria-label="How often does it happen?"
+                  disabled={busy}
+                  value={guided.frequency}
+                  onChange={(event) => setGuided({ ...guided, frequency: event.target.value as GuidedAnswers["frequency"] })}
+                >
+                  <option value="">Choose if you know</option>
+                  {Object.entries(frequencyLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
+              </label>
+              <details className="guided-steps" open={!!guided.steps || undefined}>
+                <summary>Add the steps you took <span className="optional">optional</span></summary>
+                <label>
+                  Steps you took
+                  <textarea
+                    aria-label="Steps you took"
+                    rows={3}
+                    maxLength={2000}
+                    disabled={busy}
+                    value={guided.steps}
+                    onChange={(event) => setGuided({ ...guided, steps: event.target.value })}
+                    placeholder={"1. Opened my cart\n2. Entered my address\n3. Clicked Pay now"}
+                  />
+                </label>
+              </details>
               <label>
                 Where did it happen?
                 <input
@@ -971,6 +1073,7 @@ export default function CustomerIntake({
                 <MessageSquare size={16} />
                 <p>{record.text || "Screenshot feedback"}</p>
               </div>
+              <GuidedDetails details={record.guided_details} />
               <dl className="customer-review-details">
                 <div>
                   <dt>Affected page</dt>
@@ -1067,6 +1170,9 @@ export default function CustomerIntake({
               key={record.access_token}
               token={record.access_token}
             />
+            <p>Archiving hides this report from your active list. The company can still reply, and you can restore it anytime.</p>
+            {record.archived_at && <p className="customer-notice">This report is archived in your list.</p>}
+            <ArchiveReportButton endpoint={`/public/submissions/${record.access_token}`} archived={!!record.archived_at} onChange={value => adopt(value)} />
             <div className="receipt-next">
               <span>01</span>
               <p>The agency reviews the details and any remaining unknowns.</p>

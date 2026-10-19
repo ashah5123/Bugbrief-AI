@@ -21,6 +21,7 @@ class Project(Base):
 
 class Feedback(Base):
     __tablename__ = 'feedback'
+    archived_at: Mapped[str | None] = mapped_column(String, nullable=True)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'))
     text: Mapped[str] = mapped_column(Text)
@@ -85,6 +86,8 @@ class IntakeLink(Base):
 
 class CustomerSubmission(Base):
     __tablename__ = 'customer_submissions'
+    draft_version: Mapped[int] = mapped_column(Integer, default=1, server_default='1')
+    archived_at: Mapped[str | None] = mapped_column(String, nullable=True)
     __table_args__ = (UniqueConstraint('link_id', 'client_nonce'),)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     link_id: Mapped[str] = mapped_column(ForeignKey('intake_links.id'), index=True)
@@ -94,6 +97,7 @@ class CustomerSubmission(Base):
     client_nonce: Mapped[str] = mapped_column(String)
     reporter_name: Mapped[str] = mapped_column(String(80), default='')
     context: Mapped[dict] = mapped_column(JSON, default=dict)
+    guided_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     stage: Mapped[str] = mapped_column(String, default='draft')
     processing_started_at: Mapped[str | None] = mapped_column(String, nullable=True)
     processing_error: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -206,6 +210,8 @@ class MailMessage(Base):
 
 class EmployeeProject(Base):
     __tablename__ = 'employee_projects'
+    role: Mapped[str] = mapped_column(String, default='contributor', server_default='contributor')
+    can_delete: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     employee_id: Mapped[str] = mapped_column(ForeignKey('employee_accounts.id'), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
     created_at: Mapped[str] = mapped_column(String, default=now)

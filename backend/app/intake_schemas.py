@@ -13,11 +13,25 @@ class BrowserContext(StrictModel):
     source: Literal['standalone', 'embedded', 'demo'] = 'standalone'
     same_browser_confirmed: bool = False
 
+class GuidedDetails(StrictModel):
+    goal: str = Field(default='', max_length=1000)
+    expected: str = Field(default='', max_length=2000)
+    steps: str = Field(default='', max_length=2000)
+    frequency: Literal['', 'every_time', 'sometimes', 'once', 'not_sure'] = ''
+
+    @field_validator('goal', 'expected', 'steps')
+    @classmethod
+    def trim_answer(cls, value):
+        return value.strip()
+
+
 class CustomerDraft(StrictModel):
+    draft_version: int | None = Field(default=None, ge=1)
     text: str = Field(default='', max_length=8000)
     page_url: str = Field(default='', max_length=2000)
     reporter_name: str = Field(default='', max_length=80)
     context: BrowserContext = Field(default_factory=BrowserContext)
+    guided_details: GuidedDetails | None = None
     _url = field_validator('page_url')(ProjectIn.url_check.__func__)
 
 class CustomerCreate(CustomerDraft):

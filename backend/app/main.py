@@ -24,8 +24,9 @@ from .workflow import router as workflow_router
 from .conversation import router as conversation_router
 from .duplicates import router as duplicates_router
 from .reply_media import MAX_REPLY_BODY
+from .archive import router as archive_router
 from .account_management import router as account_management_router
-from .project_access import router as access_router, company_project_ids, require_company_project
+from .project_access import router as access_router, company_project_ids, require_company_project, require_project_action, project_permissions
 from .employee_auth import current_employee
 from .models import EmployeeProject, EmployeeAccount, IssueProgress, IssueEvent
 from .notifications import router as notification_router, deliver_pending
@@ -65,6 +66,7 @@ app.include_router(duplicates_router)
 app.include_router(account_management_router)
 app.include_router(access_router)
 app.include_router(notification_router)
+app.include_router(archive_router)
 
 @app.middleware('http')
 async def local_write_guard(request: Request, call_next):
@@ -84,6 +86,13 @@ async def local_write_guard(request: Request, call_next):
             if project_id:
                 try:
                     require_company_project(request, db, project_id)
+                    if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
+                        action = 'work'
+                        if target[1] == 'projects':
+                            action = 'manage'
+                        elif request.method == 'DELETE' and request.url.path.rstrip('/') == f'/api/feedback/{target[2]}':
+                            action = 'delete'
+                        require_project_action(request, db, project_id, action)
                 except HTTPException as error:
                     return JSONResponse({'detail': error.detail}, status_code=error.status_code)
     if request.method in ('POST', 'PUT', 'PATCH', 'DELETE'):
@@ -92,11 +101,12 @@ async def local_write_guard(request: Request, call_next):
             return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
         upload = request.method == 'POST' and re.fullmatch(r'/api/(?:feedback/[a-f0-9-]{36}|public/submissions/[A-Za-z0-9_-]{43})/attachments', request.url.path)
         reply = request.method == 'POST' and re.fullmatch(r'/api/(?:feedback/[a-f0-9-]{36}|public/submissions/[A-Za-z0-9_-]{43})/messages', request.url.path)
-        limit = MAX_BYTES if upload else MAX_REPLY_BODY if reply else 32768
+        draft = (request.method == 'POST' and re.fullmatch(r'/api/public/intake/[A-Za-z0-9_-]{43}/submissions', request.url.path)) or (request.method == 'PUT' and re.fullmatch(r'/api/public/submissions/[A-Za-z0-9_-]{43}', request.url.path))
+        limit = MAX_BYTES if upload else MAX_REPLY_BODY if reply else 65536 if draft else 32768
         body = bytearray()
         async for chunk in request.stream():
             if len(body) + len(chunk) > limit:
-                return JSONResponse({'detail': 'Screenshot exceeds 2 MiB.' if upload else 'Reply is too large. Attach at most three reviewed screenshots, each up to 2 MiB.' if reply else 'Request is too large. Maximum JSON size is 32 KiB.'}, status_code=413)
+                return JSONResponse({'detail': 'Screenshot exceeds 2 MiB.' if upload else 'Reply is too large. Attach at most three reviewed screenshots, each up to 2 MiB.' if reply else f'Request is too large. Maximum JSON size is {limit // 1024} KiB.'}, status_code=413)
             body.extend(chunk)
         request._body = bytes(body)
     response = await call_next(request)
@@ -121,7 +131,7 @@ def projects(request: Request, db: Session = Depends(get_db)):
     query = select(Project).order_by(Project.created_at)
     if ids is not None:
         query = query.where(Project.id.in_(ids))
-    return [serialize(p) for p in db.scalars(query).all()]
+    return [{**serialize(p), 'permissions': project_permissions(request, db, p.id)} for p in db.scalars(query).all()]
 
 @app.post('/api/projects', status_code=201)
 async def create_project(data: ProjectIn, request: Request, db: Session = Depends(get_db)):
@@ -130,7 +140,7 @@ async def create_project(data: ProjectIn, request: Request, db: Session = Depend
     db.flush()
     employee = current_employee(request, db)
     if employee:
-        db.add(EmployeeProject(employee_id=employee.id, project_id=project.id))
+        db.add(EmployeeProject(employee_id=employee.id, project_id=project.id, role='manager'))
     db.commit()
     return serialize(project)
 
@@ -146,9 +156,11 @@ async def edit_project(project_id: str, data: ProjectIn, db: Session = Depends(g
     return serialize(project)
 
 @app.get('/api/feedback')
-def feedback_list(request: Request, db: Session = Depends(get_db)):
+def feedback_list(request: Request, include_archived: bool = False, db: Session = Depends(get_db)):
     query = select(Feedback).outerjoin(CustomerSubmission, CustomerSubmission.feedback_id == Feedback.id).where(Feedback.deleted_at.is_(None), (CustomerSubmission.id.is_(None)) | (CustomerSubmission.stage == 'submitted')).order_by(Feedback.updated_at.desc())
     ids = company_project_ids(request, db)
+    if not include_archived:
+        query = query.where(Feedback.archived_at.is_(None))
     if ids is not None:
         query = query.where(Feedback.project_id.in_(ids))
     return [serialize(f, db) for f in db.scalars(query).all()]
@@ -159,7 +171,7 @@ async def delete_feedback(feedback_id: str, request: Request, db: Session = Depe
 
 @app.post('/api/feedback', status_code=201)
 async def create_feedback(data: FeedbackIn, request: Request, db: Session = Depends(get_db)):
-    require_company_project(request, db, data.project_id)
+    require_project_action(request, db, data.project_id, 'work')
     if not db.get(Project, data.project_id):
         raise HTTPException(404, 'Project not found')
     feedback = Feedback(**data.model_dump())
@@ -174,7 +186,7 @@ async def edit_feedback(feedback_id: str, data: FeedbackIn, request: Request, db
     customer = db.scalar(select(CustomerSubmission).where(CustomerSubmission.feedback_id == item.id))
     if customer and any(getattr(item, key) != value for key, value in data.model_dump().items()):
         raise HTTPException(409, 'Original customer feedback is preserved. Add a clarification or edit the report instead.')
-    require_company_project(request, db, data.project_id)
+    require_project_action(request, db, data.project_id, 'work')
     if not db.get(Project, data.project_id):
         raise HTTPException(404, 'Project not found')
     if item.project_id != data.project_id:

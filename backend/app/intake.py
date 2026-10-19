@@ -4,7 +4,7 @@ import secrets
 from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.orm import Session
 from .db import get_db
 from .config import settings
@@ -90,7 +90,8 @@ def snapshot(db, item):
             'project_name': project.name, 'team_name': project.team_name, 'project_url': project.url, 'stage': item.stage, 'account_owned': bool(item.account_id),
             'reporter_name': item.reporter_name, 'text': feedback.text, 'page_url': feedback.page_url,
             'workflow': progress_snapshot(db, feedback, public=True) if item.stage == 'submitted' else None,
-            'context': item.context, 'processing_error': item.processing_error,
+            'context': item.context, 'guided_details': item.guided_details, 'draft_version': item.draft_version,
+            'archived_at': item.archived_at, 'processing_error': item.processing_error,
             'processing': bool(item.processing_started_at and (datetime.now(timezone.utc) - datetime.fromisoformat(item.processing_started_at)).total_seconds() < 300), 'submitted_at': item.submitted_at,
             'has_report': feedback.report is not None, 'questions': pending_questions(db, item),
             'answers': [{'id': a.id, 'question': a.question, 'answer': a.answer} for a in clarifications(db, feedback.id)],
@@ -127,6 +128,9 @@ def intake_config(token: str, request: Request, db: Session = Depends(get_db)):
 def set_draft(item, feedback, data):
     item.reporter_name = data.reporter_name.strip()
     item.context = data.context.model_dump()
+    # Older clients omit this field. An explicit null clears the answers.
+    if 'guided_details' in data.model_fields_set:
+        item.guided_details = data.guided_details.model_dump() if data.guided_details else None
     feedback.text = data.text
     feedback.page_url = data.page_url
     # Only a customer confirmation establishes that captured context matches the issue browser.
@@ -180,7 +184,22 @@ async def delete_submission(token: str, request: Request, db: Session = Depends(
 async def update_submission(token: str, data: CustomerDraft, request: Request, db: Session = Depends(get_db)):
     item = submission(db, token, request)
     editable(request, item)
-    set_draft(item, db.get(Feedback, item.feedback_id), data)
+    if data.draft_version is None:
+        raise HTTPException(428, 'Reload the draft before saving. A draft version is required.')
+    feedback = db.get(Feedback, item.feedback_id)
+    same = (feedback.text == data.text and feedback.page_url == data.page_url and
+            item.reporter_name == data.reporter_name.strip() and item.context == data.context.model_dump() and
+            ('guided_details' not in data.model_fields_set or item.guided_details ==
+             (data.guided_details.model_dump() if data.guided_details else None)))
+    if same:
+        return snapshot(db, item)  # An exact retry of a committed save is harmless.
+    changed = db.execute(update(CustomerSubmission).where(CustomerSubmission.id == item.id,
+        CustomerSubmission.draft_version == data.draft_version).values(draft_version=data.draft_version + 1))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, 'Draft changed in another tab. Your unsaved answers are still here. Load the latest draft before saving.')
+    db.refresh(item)
+    set_draft(item, feedback, data)
     db.commit()
     return snapshot(db, item)
 
@@ -189,6 +208,7 @@ async def upload_image(token: str, request: Request, filename: str = 'screenshot
     item = submission(db, token, request)
     editable(request, item)
     await upload(item.feedback_id, request, filename, reviewed, db)
+    item.draft_version += 1
     item.stage = 'draft'
     db.commit()
     return snapshot(db, item)
@@ -203,6 +223,7 @@ async def delete_image(token: str, attachment_id: str, request: Request, db: Ses
     item = submission(db, token, request)
     editable(request, item)
     await delete(item.feedback_id, attachment_id, request, db)
+    item.draft_version += 1
     item.stage = 'draft'
     db.commit()
     return snapshot(db, item)
@@ -225,6 +246,7 @@ async def save_answers(token: str, data: CustomerAnswers, request: Request, db: 
     for answer in new:
         db.add(Clarification(feedback_id=feedback.id, **answer.model_dump()))
     if new:
+        item.draft_version += 1
         evidence_changed(feedback)
         item.stage = 'draft'
     db.commit()
@@ -240,6 +262,7 @@ async def process_submission(token: str, data: GenerateIn, request: Request, db:
     if not feedback.text.strip() and not attachments(db, feedback.id):
         raise HTTPException(400, 'Describe the issue or attach a reviewed screenshot first.')
     item.processing_started_at = now()
+    item.draft_version += 1
     item.consented_at = now()
     item.processing_error = None
     db.commit()

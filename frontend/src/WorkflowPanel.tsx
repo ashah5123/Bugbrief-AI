@@ -162,6 +162,7 @@ export function CustomerProgress({
 }
 export default function WorkflowPanel({
   hasCustomer = true,
+  readOnly = false,
   feedbackId,
   workflow,
   employees,
@@ -169,6 +170,7 @@ export default function WorkflowPanel({
 }: {
   feedbackId: string;
   hasCustomer?: boolean;
+  readOnly?: boolean;
   workflow: IssueWorkflow;
   employees: IssueEmployee[];
   onChange: (value: IssueWorkflow) => void;
@@ -201,6 +203,7 @@ export default function WorkflowPanel({
   return (
     <>
       <NextStep workflow={workflow} audience="company" hasCustomer={hasCustomer} />
+      <fieldset className="permission-controls" disabled={readOnly}>
       <TriagePanel key={feedbackId} feedbackId={feedbackId} workflow={workflow} onChange={onChange} />
       <section className="workflow-panel" aria-label="Assignment and progress">
         <div className="progress-card-heading">
@@ -369,7 +372,8 @@ export default function WorkflowPanel({
         <ProgressTimeline workflow={workflow} />
       </section>
       <DuplicateReports key={`duplicates-${feedbackId}`} feedbackId={feedbackId} employees={employees} onWorkflow={onChange} />
-      <Conversation key={feedbackId} feedbackId={feedbackId} />
+      </fieldset>
+      <Conversation key={feedbackId} feedbackId={feedbackId} readOnly={readOnly} />
     </>
   );
 }

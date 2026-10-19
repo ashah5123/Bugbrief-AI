@@ -5,6 +5,8 @@ type Member = {
   name: string;
   email: string;
   revoked_at?: string | null;
+  role?: string;
+  can_delete?: boolean;
 };
 type Access = {
   customer_access: "link" | "members";
@@ -52,6 +54,14 @@ export default function ProjectAccess() {
     } finally {
       setBusy(false);
     }
+  }
+  async function changePermissions(member: Member, nextRole: string, canDelete: boolean) {
+    const previous = access;
+    setAccess(value => value ? { ...value, employees: value.employees.map(person => person.id === member.id ? { ...person, role: nextRole, can_delete: canDelete } : person) } : value);
+    setBusy(true); setError("");
+    try { setAccess(await api<Access>(`/projects/${project}/members/employee/${member.id}`, "PATCH", { role: nextRole, can_delete: canDelete })); }
+    catch (e) { setAccess(previous); setError((e as Error).message); }
+    finally { setBusy(false); }
   }
   return (
     <section className="conversation-card" aria-label="Project access">
@@ -165,6 +175,20 @@ export default function ProjectAccess() {
                     <strong>{member.name}</strong>
                     <p>{member.email}</p>
                     {member.revoked_at && <small>Access removed</small>}
+                    {group === "employees" && <div className="employee-permissions">
+                      <label>Project role
+                        <select aria-label={`Project role for ${member.name}`} value={member.role || "contributor"} disabled={busy}
+                          onChange={event => void changePermissions(member, event.target.value, !!member.can_delete)}>
+                          <option value="viewer">Viewer · read only</option>
+                          <option value="contributor">Contributor · reports and replies</option>
+                          <option value="manager">Manager · reports and project settings</option>
+                        </select>
+                      </label>
+                      <label><input type="checkbox" checked={!!member.can_delete} disabled={busy}
+                        aria-label={`Allow permanent deletion for ${member.name}`}
+                        onChange={event => void changePermissions(member, member.role || "contributor", event.target.checked)} /> Allow permanent deletion</label>
+                      <small>Permissions save immediately. Only the workspace owner can change them.</small>
+                    </div>}
                   </div>
                   <button
                     className="secondary-button"
