@@ -91,9 +91,9 @@ def test_idempotent_create_and_private_resume(anonymous,link):
 def test_pending_drafts_hidden_then_submitted_once(client,anonymous,link):
     item=create(anonymous,link,reporter_name='Customer A').json();token=item['access_token']
     assert client.get('/api/feedback').json()==[]
-    first=anonymous.post(f'/api/public/submissions/{token}/submit',json={})
+    first=anonymous.post(f'/api/public/submissions/{token}/submit',json={'draft_version': anonymous.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     assert first.status_code==200 and first.json()['stage']=='submitted'
-    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={}).json()['reference']==item['reference']
+    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={'draft_version': anonymous.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).json()['reference']==item['reference']
     inbox=client.get('/api/feedback').json()
     assert len(inbox)==1 and inbox[0]['customer']['reporter_name']=='Customer A'
     assert inbox[0]['project_id']==link['project_id']
@@ -121,7 +121,7 @@ def test_context_is_not_assumed_to_be_issue_browser(client,anonymous,link,report
     assert 'NOT confirmed' in evidence['captured_context']
     assert '390' in evidence['captured_context']
     assert all('Name not for provider' not in value for value in evidence.values())
-    anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={})
+    anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)})
     received=client.get('/api/feedback').json()[0]
     assert received['customer']['context']['viewport_width']==390 and received['browser']==''
 
@@ -145,7 +145,7 @@ def test_missing_key_still_allows_sending_without_leaking_setup(client,anonymous
     checked=anonymous.post(f'/api/public/submissions/{item["access_token"]}/process',json={'consent':True}).json()
     assert checked['text']==item['text'] and checked['processing_error']
     assert '.env' not in checked['processing_error'] and 'GEMINI_API_KEY' not in checked['processing_error']
-    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={}).status_code==200
+    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
     assert client.get('/api/feedback').json()[0]['report'] is None
 
 def test_no_external_processing_without_consent(client,anonymous,link):
@@ -176,7 +176,7 @@ def test_follow_up_answers_and_proposal_preserve_manual_report(client,anonymous,
     app.state.generator=ReportDouble(revised)
     second=anonymous.post(f'/api/public/submissions/{token}/process',json={'consent':True}).json()
     assert second['stage']=='ready'
-    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={}).status_code==200
+    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={'draft_version': anonymous.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
     owner=client.get(f'/api/feedback/{feedback_id}').json()
     assert owner['report']['title']==manual['title'] and owner['proposal']['title']==report_data['title']
     assert any(key.startswith('clarification:') for key in app.state.generator.evidence[0])
@@ -194,7 +194,7 @@ def test_project_processing_cap_does_not_block_local_saves(client,anonymous,link
     checked=anonymous.post(f'/api/public/submissions/{second["access_token"]}/process',json={'consent':True}).json()
     assert checked['processing_error'] and not checked['has_report']
     assert len(double.evidence)==1
-    assert anonymous.post(f'/api/public/submissions/{second["access_token"]}/submit',json={}).status_code==200
+    assert anonymous.post(f'/api/public/submissions/{second["access_token"]}/submit',json={'draft_version': anonymous.get((f"/api/public/submissions/{second['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
     assert client.get('/api/health').json()['usage']['attempts']==1
 
 def test_provider_failure_preserves_original_and_allows_send(anonymous,link):
@@ -204,7 +204,7 @@ def test_provider_failure_preserves_original_and_allows_send(anonymous,link):
     item=create(anonymous,link).json();token=item['access_token']
     failed=anonymous.post(f'/api/public/submissions/{token}/process',json={'consent':True}).json()
     assert failed['text']==item['text'] and failed['processing_error'] and 'Private' not in failed['processing_error']
-    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={}).status_code==200
+    assert anonymous.post(f'/api/public/submissions/{token}/submit',json={'draft_version': anonymous.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
 
 def test_customer_screenshot_scope_and_review(anonymous,link):
     first=create(anonymous,link).json();second=create(anonymous,link).json()
@@ -221,7 +221,7 @@ def test_customer_screenshot_scope_and_review(anonymous,link):
 
 def test_submitted_submission_is_read_only(anonymous,link):
     item=create(anonymous,link).json();base=f'/api/public/submissions/{item["access_token"]}'
-    anonymous.post(base+'/submit',json={})
+    anonymous.post(base+'/submit',json={'draft_version': anonymous.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     assert anonymous.put(base,json={'text':'Changed'}).status_code==409
     assert anonymous.post(base+'/process',json={'consent':True}).status_code==409
     assert anonymous.post(base+'/answers',json={'answers':[{'question':'Additional context','answer':'Changed'}]}).status_code==409
@@ -230,7 +230,7 @@ def test_submitted_submission_is_read_only(anonymous,link):
 
 def test_empty_draft_cannot_be_submitted(anonymous,link):
     item=create(anonymous,link,text='').json()
-    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={}).status_code==400
+    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code==400
 
 def test_capabilities_redacted_from_access_logs():
     record=logging.LogRecord('uvicorn.access',20,'',0,'x',('127.0.0.1','GET','/api/public/submissions/SECRET/attachments/a/content?filename=private.png','1.1',200),None)
@@ -246,7 +246,7 @@ def test_private_responses_are_not_cacheable(anonymous,link):
 
 def test_agency_preserves_original_customer_feedback(client,anonymous,link):
     item=create(anonymous,link).json()
-    anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={})
+    anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit',json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)})
     received=client.get('/api/feedback').json()[0]
     fields={key:received[key] for key in ['project_id','text','page_url','device','browser']}
     assert client.put(f'/api/feedback/{received["id"]}',json={**fields,'text':'An agency guess'}).status_code==409

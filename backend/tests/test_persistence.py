@@ -39,7 +39,7 @@ with TestClient(app) as c:
     p=c.post('/api/projects',json={'name':'Persistent customer project'}).json()
     token=c.post('/api/projects/'+p['id']+'/intake-link',json={}).json()['token']
     item=c.post('/api/public/intake/'+token+'/submissions',json={'client_nonce':'persistence-nonce-123456789','text':'Checkout button does nothing.','context':{'viewport_width':390,'viewport_height':844}}).json()
-    c.post('/api/public/submissions/'+item['access_token']+'/submit',json={})
+    c.post('/api/public/submissions/'+item['access_token']+'/submit',json={'draft_version': c.get(('/api/public/submissions/' + item['access_token'] + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     open(os.environ['CUSTOMER_MANIFEST'],'w').write(json.dumps({'token':item['access_token'],'code_hash':hashlib.sha256(access_code().encode()).hexdigest()}))
 """
     read="""
@@ -197,7 +197,7 @@ with TestClient(app) as c:
     assert c.post('/api/projects/'+project['id']+'/members/employee',json={'email':'progress@example.com'}).status_code==200
     link=c.post('/api/projects/'+project['id']+'/intake-link',json={}).json()['token']
     customer=c.post('/api/public/intake/'+link+'/submissions',json={'client_nonce':'persistent-progress-nonce-123','text':'Keep this progress.'}).json()
-    c.post('/api/public/submissions/'+customer['access_token']+'/submit',json={})
+    c.post('/api/public/submissions/'+customer['access_token']+'/submit',json={'draft_version': c.get(('/api/public/submissions/' + customer['access_token'] + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     feedback=c.get('/api/feedback').json()[0]
     assert c.patch('/api/feedback/'+feedback['id']+'/workflow',json={'version':0,'status':'in_progress','assigned_employee_id':employee_id,'note':'Persist this public update.'}).status_code==200
     open(os.environ['PROGRESS_MANIFEST'],'w').write(json.dumps({'id':feedback['id'],'token':customer['access_token']}))
@@ -500,7 +500,7 @@ with TestClient(app) as c:
     assert item['text']=='Original customer words' and item['guided_details'] is None
     r=c.put(base,json={'text':item['text'],'draft_version':item['draft_version'],'guided_details':{'goal':'Order dinner','expected':'Checkout opens','steps':'Open cart','frequency':'once'}})
     assert r.status_code==200 and r.json()['guided_details']['goal']=='Order dinner'
-    assert c.post(base+'/submit',json={}).status_code==200
+    assert c.post(base+'/submit',json={'draft_version': c.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
 """)
     process("""
 from fastapi.testclient import TestClient
@@ -550,7 +550,7 @@ with TestClient(app) as c:
     assert access['role']=='contributor' and access['can_delete'] is False
     r=c.put('/api/public/submissions/legacy-token',json={'text':'Updated words','draft_version':1})
     assert r.status_code==200 and r.json()['draft_version']==2
-    assert c.post('/api/public/submissions/legacy-token/submit',json={}).status_code==200
+    assert c.post('/api/public/submissions/legacy-token/submit',json={'draft_version': c.get(('/api/public/submissions/legacy-token/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code==200
     assert c.patch('/api/feedback/f/archive',json={'archived':True}).status_code==200
     assert c.patch('/api/public/submissions/legacy-token/archive',json={'archived':True}).status_code==200
     assert c.patch('/api/projects/p/members/employee/e',json={'role':'manager','can_delete':True}).status_code==200

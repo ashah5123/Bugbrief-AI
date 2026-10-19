@@ -36,7 +36,7 @@ def test_delete_erases_content_files_and_private_access_but_keeps_quota(client, 
                               content=raw.getvalue(), headers={'Content-Type': 'image/png'}).json()['attachments'][0]
         assert customer.post(f'/api/public/submissions/{token}/answers', json={'answers': [
             {'question': 'Additional context', 'answer': 'Private answer'}]}).status_code == 200
-        customer.post(f'/api/public/submissions/{token}/submit', json={})
+        customer.post(f'/api/public/submissions/{token}/submit', json={'draft_version': customer.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)})
         feedback = client.get('/api/feedback').json()[0]
         with database() as db:
             stored = db.get(Feedback, feedback['id'])
@@ -54,7 +54,7 @@ def test_delete_erases_content_files_and_private_access_but_keeps_quota(client, 
         assert client.get(f'/api/feedback/{feedback["id"]}').status_code == 404
         assert customer.get(f'/api/public/submissions/{token}').status_code == 404
         assert customer.get(f'/api/public/submissions/{token}/attachments/{image["id"]}/content').status_code == 404
-        assert customer.post(f'/api/public/submissions/{token}/submit', json={}).status_code == 404
+        assert customer.post(f'/api/public/submissions/{token}/submit', json={'draft_version': customer.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 404
         assert customer.put(f'/api/public/submissions/{token}', json={'text': 'Revive'}).status_code == 404
         assert customer.post(f'/api/public/intake/{link["token"]}/submissions', json=payload).status_code == 410
         assert client.delete(f'/api/feedback/{feedback["id"]}').status_code == 404
@@ -75,7 +75,7 @@ def test_anonymous_cannot_delete_company_or_other_customer_reports(client):
     second = client.post(f'/api/public/intake/{link["token"]}/submissions', json={
         'text': 'Second customer feedback', 'client_nonce': secrets.token_urlsafe(24)}).json()
     for item in (first, second):
-        client.post(f'/api/public/submissions/{item["access_token"]}/submit', json={})
+        client.post(f'/api/public/submissions/{item["access_token"]}/submit', json={'draft_version': client.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)})
     rows = client.get('/api/feedback').json()
     with TestClient(app) as customer:
         assert customer.delete(f'/api/feedback/{rows[0]["id"]}').status_code == 401
@@ -89,7 +89,7 @@ def test_anonymous_cannot_delete_company_or_other_customer_reports(client):
 @pytest.mark.parametrize('actor', ['customer', 'company'])
 def test_deletion_rejected_while_own_report_is_processing(client, actor, monkeypatch):
     _, _, _, item = customer_record(client)
-    assert client.post(f'/api/public/submissions/{item["access_token"]}/submit', json={}).status_code == 200
+    assert client.post(f'/api/public/submissions/{item["access_token"]}/submit', json={'draft_version': client.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
     with database() as db:
         feedback_id = db.scalar(select(CustomerSubmission.feedback_id))
     class Locked:

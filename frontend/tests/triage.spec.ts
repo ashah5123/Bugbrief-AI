@@ -9,7 +9,7 @@ test("triage persists and combined filters find overdue customer reports", async
     const submission = await (await request.post(`${api}/public/intake/${link.token}/submissions`, {
       data: { client_nonce: `triage-${info.project.name}-customer-${index}-123456789`, text: `${name}'s checkout problem`, reporter_name: name },
     })).json();
-    expect((await request.post(`${api}/public/submissions/${submission.access_token}/submit`, { data: {} })).ok()).toBe(true);
+    expect((await request.post(`${api}/public/submissions/${submission.access_token}/submit`, { data: { draft_version: submission.draft_version } })).ok()).toBe(true);
     const items = await (await request.get(`${api}/feedback`)).json();
     const item = items.find((f: { text: string; project_id: string }) => f.project_id === project.id && f.text === `${name}'s checkout problem`);
     records.push({ id: item.id, token: submission.access_token, customerId: item.customer.id });

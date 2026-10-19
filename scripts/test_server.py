@@ -27,9 +27,14 @@ with SessionLocal() as s:
         (CustomerAccount,CustomerSession,'Guided Customer','guided-mobile@example.test',b'i'),
         (CustomerAccount,CustomerSession,'Returning Customer','returning-desktop@example.test',b'j'),
         (CustomerAccount,CustomerSession,'Returning Customer','returning-mobile@example.test',b'k'),
+        (CustomerAccount,CustomerSession,'Pending desktop','pending-desktop@example.test',b'p'),
+        (CustomerAccount,CustomerSession,'Pending mobile','pending-mobile@example.test',b'q'),
     ]
     for model,sessions,name,email,seed_byte in identities:
         account=model(name=name,email=email,password_hash=hashed)
+        if email=='workflow-customer@example.com':
+            from app.models import now
+            account.email_verified_at=now()  # Known verified identity for private-project regressions.
         s.add(account);s.flush()
         token=base64.urlsafe_b64encode(seed_byte*32).rstrip(b'=')
         s.add(sessions(token_hash=hashlib.sha256(token).hexdigest(),account_id=account.id,expires_at=time.time()+3600))

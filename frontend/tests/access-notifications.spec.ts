@@ -125,7 +125,7 @@ test("owner scopes projects; employee and customer receive private, unread repor
     (
       await customer.request.post(
         base + `/api/public/submissions/${previous.access_token}/submit`,
-        { data: {} },
+        { data: { draft_version: previous.draft_version } },
       )
     ).ok(),
   ).toBe(true);

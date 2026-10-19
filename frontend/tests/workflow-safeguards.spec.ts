@@ -80,7 +80,7 @@ test("owner sets employee roles; archive and restore remain independent from cus
   await customer.addCookies([{ name: "bugbrief_customer", value: Buffer.alloc(32, info.project.name === "desktop" ? "j" : "k").toString("base64url"), url: base }]);
   const link = await (await request.post(`${api}/projects/${project.id}/intake-link`, { data: {} })).json();
   const draft = await (await customer.request.post(`${api}/public/intake/${link.token}/submissions`, { data: { client_nonce: crypto.randomUUID(), text: "Report for archive checks" } })).json();
-  await customer.request.post(`${api}/public/submissions/${draft.access_token}/submit`, { data: {} });
+  await customer.request.post(`${api}/public/submissions/${draft.access_token}/submit`, { data: { draft_version: draft.draft_version } });
   const record = (await (await request.get(`${api}/feedback`)).json()).find((value: { project_id: string }) => value.project_id === project.id);
   const employeeContext = await browser.newContext({ extraHTTPHeaders: {}, viewport: info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1280, height: 900 } });
   await employeeContext.addCookies([{ name: "bugbrief_employee", value: Buffer.alloc(32, info.project.name === "desktop" ? "f" : "g").toString("base64url"), url: base }]);

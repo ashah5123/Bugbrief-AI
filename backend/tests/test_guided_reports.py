@@ -42,7 +42,7 @@ def test_guided_answers_submit_once_and_stay_read_only(client, anonymous, link):
     assert client.get('/api/feedback').json() == []
     base = f'/api/public/submissions/{first["access_token"]}'
     for _ in range(2):
-        assert anonymous.post(base + '/submit', json={}).json()['guided_details'] == DETAILS
+        assert anonymous.post(base + '/submit', json={'draft_version': anonymous.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)}).json()['guided_details'] == DETAILS
     report = client.get('/api/feedback').json()[0]
     assert report['text'] == first['text']
     assert report['customer']['guided_details'] == DETAILS
@@ -72,14 +72,14 @@ def test_guided_evidence_quotes_are_available_without_sharing_name(client, anony
     checked = anonymous.post(f'/api/public/submissions/{item["access_token"]}/process', json={'consent': True})
     assert checked.status_code == 200 and checked.json()['has_report']
     assert checked.json()['guided_details'] == DETAILS
-    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit', json={}).status_code == 200
+    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit', json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
     saved = client.get('/api/feedback').json()[0]
     assert saved['report']['expected_behaviour']['source'] == 'guided:expected'
 
 
 def test_optional_answers_stay_unknown_and_do_not_replace_a_symptom(client, anonymous, link):
     item = create(anonymous, link, text='', guided_details={'goal': 'Buy something', 'frequency': 'not_sure'}).json()
-    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit', json={}).status_code == 400
+    assert anonymous.post(f'/api/public/submissions/{item["access_token"]}/submit', json={'draft_version': anonymous.get((f"/api/public/submissions/{item['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 400
     from app.evidence import report_evidence
     from app.models import Feedback
     with app.state.session_factory() as db:

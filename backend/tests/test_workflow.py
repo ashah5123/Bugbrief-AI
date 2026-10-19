@@ -35,7 +35,7 @@ def customer_report(client):
     link = client.post(f'/api/projects/{project["id"]}/intake-link', json={}).json()
     record = client.post(f'/api/public/intake/{link["token"]}/submissions', json={
         'client_nonce': 'tracked-customer-nonce-123456', 'text': 'The checkout button fails.'}).json()
-    client.post(f'/api/public/submissions/{record["access_token"]}/submit', json={})
+    client.post(f'/api/public/submissions/{record["access_token"]}/submit', json={'draft_version': client.get((f"/api/public/submissions/{record['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)})
     feedback = client.get('/api/feedback').json()[0]
     return {'id': feedback['id'], 'token': record['access_token'], 'link': link['token'], 'project': project['id']}
 

@@ -38,7 +38,11 @@ def projects(account=Depends(require_customer), db: Session = Depends(get_db)):
         .join(Project, Project.id == CustomerMembership.project_id)
         .join(IntakeLink, IntakeLink.id == CustomerMembership.link_id)
         .where(CustomerMembership.account_id == account.id, CustomerMembership.revoked_at.is_(None)).order_by(Project.name)).all()
-    return [{'id': project.id, 'name': project.name, 'team_name': project.team_name, 'intake_token': link.token if not link.revoked_at else None,
+    return [{'id': project.id,
+             'name': 'Private project invitation' if project.customer_access == 'members' and not account.email_verified_at else project.name,
+             'team_name': '' if project.customer_access == 'members' and not account.email_verified_at else project.team_name,
+             'intake_token': link.token if not link.revoked_at and customer_can_access(db, account.id, project.id) else None,
+             'verification_required': project.customer_access == 'members' and not bool(account.email_verified_at),
              'closed': bool(link.revoked_at)} for _, project, link in rows]
 
 

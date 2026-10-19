@@ -34,7 +34,7 @@ def records(client, draft):
         result = client.post(f'/api/public/intake/{token}/submissions', json={
             'client_nonce': f'duplicate-customer-{index}-nonce-123456', 'reporter_name': f'Private Customer {index}',
             'text': f'Customer {index} private checkout report'}).json()
-        client.post(f'/api/public/submissions/{result["access_token"]}/submit', json={})
+        client.post(f'/api/public/submissions/{result["access_token"]}/submit', json={'draft_version': client.get((f"/api/public/submissions/{result['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)})
         with database() as db:
             fid = db.scalar(select(CustomerSubmission.feedback_id).where(CustomerSubmission.access_token == result['access_token']))
         rows.append({'id': fid, 'token': result['access_token']})
@@ -238,7 +238,7 @@ def test_shared_notifications_stay_individual_and_private(client, people):
     assert client.post(f'/api/projects/{alpha}/members/customer', json={'email':email}).status_code == 200
     result = customer.post(f'/api/public/intake/{first["link"]}/submissions', json={
         'text':'A separate customer with the same bug', 'client_nonce':'notified-duplicate-customer-12345'}).json()
-    assert customer.post(f'/api/public/submissions/{result["access_token"]}/submit', json={}).status_code == 200
+    assert customer.post(f'/api/public/submissions/{result["access_token"]}/submit', json={'draft_version': customer.get((f"/api/public/submissions/{result['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
     with database() as db:
         fid = db.scalar(select(CustomerSubmission.feedback_id).where(CustomerSubmission.access_token == result['access_token']))
     assert link(client, fid, first['id']).status_code == 200

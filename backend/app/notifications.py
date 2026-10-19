@@ -60,9 +60,11 @@ def visible_notifications(db, scope, account_id):
             CustomerMembership.revoked_at.is_(None))
         revoked = select(CustomerMembership.project_id).where(CustomerMembership.account_id == account_id,
             CustomerMembership.revoked_at.is_not(None))
+        account = db.get(CustomerAccount, account_id)
+        verified = bool(account and account.email_verified_at)
         query = query.join(CustomerSubmission, CustomerSubmission.feedback_id == Feedback.id).join(Project, Project.id == Feedback.project_id).where(
             CustomerSubmission.account_id == account_id, CustomerSubmission.stage == 'submitted',
-            Feedback.project_id.not_in(revoked), (Project.customer_access == 'link') | Feedback.project_id.in_(allowed))
+            Feedback.project_id.not_in(revoked), (Project.customer_access == 'link') | (Feedback.project_id.in_(allowed) & verified))
     return query
 
 

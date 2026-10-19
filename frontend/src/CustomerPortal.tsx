@@ -38,6 +38,7 @@ type CustomerProject = {
   team_name: string;
   intake_token: string | null;
   closed: boolean;
+  verification_required?: boolean;
 };
 function Header() {
   return (
@@ -171,6 +172,7 @@ export default function CustomerPortal({
       api<SavedSubmission[]>("/customer/reports?include_archived=true"),
       api<CustomerProject[]>("/customer/projects"),
     ]);
+    setSession(identity);
     setItems(reports);
     setProjects(connected);
     setAccountReady(true);
@@ -253,6 +255,7 @@ export default function CustomerPortal({
     {error ? <div className="alert error" role="alert">{error}<button className="secondary-button" onClick={() => { setError(""); void refresh().catch(e => setError(e.message)); }}>Try again</button></div> : <LoaderCircle className="spin" size={24} />}
   </main></div>;
   const activeProjects = projects.filter(project => !!project.intake_token);
+  const pendingVerification = projects.some(project => project.verification_required);
   const attention = items.filter(item => item.stage !== "submitted" || ["needs_information", "ready_to_retest"].includes(item.workflow?.status || ""));
   const suffix =
     returnPath() !== "/customer"
@@ -488,8 +491,8 @@ export default function CustomerPortal({
         <section className="customer-start" aria-label="Your next step">
           <div>
             <span className="eyebrow">YOUR NEXT STEP</span>
-            <h2>{!projects.length ? "Connect your project to get started." : activeProjects.length ? "Report an issue or pick up a conversation." : "Your projects are closed for new reports."}</h2>
-            <p>{!projects.length ? "Use the invitation from the company that manages your website. They’ll receive the issues you send." : activeProjects.length ? "Your reports and replies stay together. Only you and the project team can access your reports." : "You can still open existing reports and reply to the team. Contact them if you need to report a new issue."}</p>
+            <h2>{!projects.length ? "Connect your project to get started." : activeProjects.length ? "Report an issue or pick up a conversation." : pendingVerification ? "Verify your email to open your private projects." : "Your projects are closed for new reports."}</h2>
+            <p>{!projects.length ? "Use the invitation from the company that manages your website. They’ll receive the issues you send." : activeProjects.length ? "Your reports and replies stay together. Only you and the project team can access your reports." : pendingVerification ? "Your invitation is pending. Use the verification message sent to your email, or request another one above." : "You can still open existing reports and reply to the team. Contact them if you need to report a new issue."}</p>
           </div>
           {activeProjects.length === 1 ?
             <a className="primary-button" href={`/c/${activeProjects[0].intake_token}`}><Plus size={16} />Report an issue</a> :
@@ -537,7 +540,7 @@ export default function CustomerPortal({
                       Report an issue
                     </a>
                   ) : (
-                    <small>This project is closed for new reports.</small>
+                    <small>{project.verification_required ? "Verify your email to activate this invitation." : "This project is closed for new reports."}</small>
                   )}
                 </article>
               ))}

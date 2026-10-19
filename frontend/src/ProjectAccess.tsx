@@ -7,6 +7,8 @@ type Member = {
   revoked_at?: string | null;
   role?: string;
   can_delete?: boolean;
+  email_verified?: boolean;
+  verification_required?: boolean;
 };
 type Access = {
   customer_access: "link" | "members";
@@ -175,6 +177,8 @@ export default function ProjectAccess() {
                     <strong>{member.name}</strong>
                     <p>{member.email}</p>
                     {member.revoked_at && <small>Access removed</small>}
+                    {group === "customers" && !member.revoked_at && member.verification_required && <small>Pending · customer must verify their email before private-project access becomes active</small>}
+                    {group === "customers" && !member.revoked_at && access.customer_access === "members" && member.email_verified && <small>Email verified · access active</small>}
                     {group === "employees" && <div className="employee-permissions">
                       <label>Project role
                         <select aria-label={`Project role for ${member.name}`} value={member.role || "contributor"} disabled={busy}

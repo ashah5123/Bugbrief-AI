@@ -10,7 +10,7 @@ test("reviewed reply screenshots survive retry and keep private team images out 
     const record = await (await context.request.post(`${api}/public/intake/${link.token}/submissions`, { data: {
       client_nonce: `reply-images-${info.project.name}-nonce-123456789`, text: "Checkout still does not respond.",
     } })).json();
-    expect((await context.request.post(`${api}/public/submissions/${record.access_token}/submit`, { data: {} })).ok()).toBe(true);
+    expect((await context.request.post(`${api}/public/submissions/${record.access_token}/submit`, { data: { draft_version: record.draft_version } })).ok()).toBe(true);
     const items = await (await request.get(`${api}/feedback`)).json();
     const feedback = items.find((row: { project_id: string }) => row.project_id === project.id);
     const portal = await context.newPage();

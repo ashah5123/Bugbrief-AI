@@ -45,7 +45,7 @@ def test_pagination_stable_ties_private_cursors_and_new_replies(client, anonymou
     first = create(anonymous, link).json()
     other = create(anonymous, link).json()
     base = '/api/public/submissions/' + first['access_token']
-    anonymous.post(base+'/submit', json={})
+    anonymous.post(base+'/submit', json={'draft_version': anonymous.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     with app.state.session_factory() as db:
         fid = db.scalar(select(CustomerSubmission.feedback_id).where(CustomerSubmission.access_token == first['access_token']))
         rows = [ReportMessage(id=str(uuid4()), feedback_id=fid, visibility='public', author_role='customer', author_name='Customer', body=str(n), created_at='2026-01-01T00:00:00+00:00') for n in range(205)]
@@ -92,7 +92,7 @@ def role(client, link, eid, value, can_delete=False):
 def test_roles_enforced_for_direct_writes_and_delete_is_independent(client, anonymous, link, teammate):
     person, eid = teammate
     item=create(anonymous,link).json(); base='/api/public/submissions/'+item['access_token']
-    anonymous.post(base+'/submit',json={})
+    anonymous.post(base+'/submit',json={'draft_version': anonymous.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     fid=client.get('/api/feedback').json()[0]['id']; path=f'/api/feedback/{fid}'
     assert role(client,link,eid,'viewer').status_code == 200
     assert person.get(path).status_code == 200
@@ -134,7 +134,7 @@ def test_permissions_do_not_cross_projects_and_changes_take_effect_immediately(c
 
 def test_independent_archives_restore_keep_replies_and_do_not_resolve(client, anonymous, link):
     item=create(anonymous,link).json(); base='/api/public/submissions/'+item['access_token']
-    anonymous.post(base+'/submit',json={})
+    anonymous.post(base+'/submit',json={'draft_version': anonymous.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
     fid=client.get('/api/feedback').json()[0]['id']; company=f'/api/feedback/{fid}'
     assert client.patch(company+'/archive',json={'archived':True}).json()['archived_at']
     assert client.get('/api/feedback').json() == []
@@ -157,7 +157,7 @@ def test_customer_archive_list_and_ownership(client, link):
         assert customer.post('/api/customer/register',json={'name':'Owner','email':'owner@example.test','password':'Long customer phrase 42!'}).status_code == 201
         item=create(customer,link).json(); base='/api/public/submissions/'+item['access_token']
         assert customer.patch(base+'/archive',json={'archived':True}).status_code == 409
-        customer.post(base+'/submit',json={})
+        customer.post(base+'/submit',json={'draft_version': customer.get((base + '/submit').removesuffix('/submit')).json().get('draft_version', 1)})
         assert other.patch(base+'/archive',json={'archived':True}).status_code == 404
         customer.patch(base+'/archive',json={'archived':True})
         assert customer.get('/api/customer/reports').json() == []

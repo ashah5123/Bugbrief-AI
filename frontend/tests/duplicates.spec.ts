@@ -21,7 +21,7 @@ test("one shared fix, separate customer conversations and independent retest res
         text: `Checkout duplicate ${index} ${info.project.name}`, reporter_name: `Private customer ${index}`,
         client_nonce: `duplicates-${info.project.name}-${index}-nonce-123456789`,
       });
-      await post(contexts[index].request, `/public/submissions/${record.access_token}/submit`, {});
+      await post(contexts[index].request, `/public/submissions/${record.access_token}/submit`, { draft_version: record.draft_version });
       const items = await (await request.get(`${api}/feedback`)).json();
       const row = items.find((value: { text: string; project_id: string }) => value.project_id === project.id && value.text === `Checkout duplicate ${index} ${info.project.name}`);
       records.push({ id: row.id, token: record.access_token });

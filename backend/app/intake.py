@@ -299,18 +299,32 @@ async def process_submission(token: str, data: GenerateIn, request: Request, db:
         db.commit()
     return snapshot(db, item)
 
+class SubmissionReview(StrictModel):
+    draft_version: int | None = Field(default=None, ge=1)
+
+
 @router.post('/api/public/submissions/{token}/submit')
-async def finish_submission(token: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def finish_submission(token: str, data: SubmissionReview, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     item = submission(db, token, request)
+    if data.draft_version is None:
+        raise HTTPException(428, 'Review the latest draft before sending. A draft version is required.')
+    if item.draft_version != data.draft_version:
+        raise HTTPException(409, 'Draft changed after your review. Load and review the latest draft before sending.')
     if item.stage == 'submitted':
         return snapshot(db, item)
     editable(request, item)
     feedback = db.get(Feedback, item.feedback_id)
     if not feedback.text.strip() and not attachments(db, feedback.id):
         raise HTTPException(400, 'Describe the issue or attach a screenshot before sending.')
-    item.stage = 'submitted'
-    item.submitted_at = now()
-    feedback.updated_at = now()
+    stamp = now()
+    changed = db.execute(update(CustomerSubmission).where(CustomerSubmission.id == item.id,
+        CustomerSubmission.draft_version == data.draft_version, CustomerSubmission.stage != 'submitted',
+        CustomerSubmission.stage != 'deleted').values(stage='submitted', submitted_at=stamp))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, 'Draft changed after your review. Load and review the latest draft before sending.')
+    db.refresh(item)
+    feedback.updated_at = stamp
     from .notifications import emit, deliver_pending
     emit(db, request, feedback, 'report_received', 'New customer report', company=True)
     db.commit()

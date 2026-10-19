@@ -41,7 +41,7 @@ def people(client):
             record = customers[index].post(f'/api/public/intake/{link}/submissions', json={
                 'client_nonce': 'project-notification-nonce-123456789', 'text': 'Checkout is not responding.'}).json()
             token = record['access_token']
-            assert customers[index].post(f'/api/public/submissions/{token}/submit', json={}).status_code == 200
+            assert customers[index].post(f'/api/public/submissions/{token}/submit', json={'draft_version': customers[index].get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
             with database() as db:
                 feedback_id = db.scalar(select(CustomerSubmission.feedback_id).where(CustomerSubmission.access_token == token))
             records.append({'id': feedback_id, 'token': token, 'link': link, 'customer_id': result.json()['customer']['id']})
@@ -100,6 +100,12 @@ def test_members_only_projects_require_customer_grant_and_keep_reports_individua
     assert other.get(f'/api/public/intake/{record["link"]}').status_code == 403
     assert other.post('/api/customer/projects', json={'token':record['link']}).status_code == 403
     assert client.post(f'/api/projects/{alpha}/members/customer', json={'email':'customer1@project.test'}).status_code == 200
+    assert other.get(f'/api/public/intake/{record["link"]}').status_code == 403
+    import re
+    outbox = client.get('/api/team/outbox').json()
+    mail = next(mail for mail in outbox if mail['recipient'] == 'customer1@project.test' and '/verify/' in mail['body'])
+    verify_token = re.search(r'/verify/([A-Za-z0-9_-]{43})', mail['body'])[1]
+    assert other.post('/api/auth/accounts/customer/verify/complete', json={'token': verify_token}).status_code == 200
     assert other.get(f'/api/public/intake/{record["link"]}').status_code == 200
     assert other.get(f'/api/public/submissions/{record["token"]}').status_code == 404
     assert client.delete(f'/api/projects/{alpha}/members/customer/{people["records"][1]["customer_id"]}').status_code == 200
@@ -263,7 +269,7 @@ def test_repeated_submit_and_noop_progress_do_not_duplicate_alerts(client, peopl
     employee = people['employees'][0]
     assert employee.get('/api/auth/notifications/company').json()['unread_count'] == 1
     for _ in range(2):
-        assert people['customers'][0].post(f'/api/public/submissions/{record["token"]}/submit', json={}).status_code == 200
+        assert people['customers'][0].post(f'/api/public/submissions/{record["token"]}/submit', json={'draft_version': people['customers'][0].get((f"/api/public/submissions/{record['token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
         assert patch(client, record['id']).status_code == 200
     assert employee.get('/api/auth/notifications/company').json()['unread_count'] == 1
     assert people['customers'][0].get('/api/auth/notifications/customer').json()['unread_count'] == 0

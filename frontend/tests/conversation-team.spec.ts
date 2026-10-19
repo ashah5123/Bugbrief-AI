@@ -30,7 +30,7 @@ test("customer replies, private notes and fix confirmation stay with the report"
     (
       await customer.request.post(
         `${base}/api/public/submissions/${record.access_token}/submit`,
-        { data: {} },
+        { data: { draft_version: record.draft_version } },
       )
     ).ok(),
   ).toBe(true);

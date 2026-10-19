@@ -75,7 +75,7 @@ def test_company_cannot_read_or_mutate_unsent_customer_evidence_even_with_known_
         assert client.put(f'/api/feedback/{fid}',json={'project_id':project['id'],'text':'Override customer draft.'}).status_code == 404
         assert client.post(f'/api/feedback/{fid}/generate',json={'consent':True}).status_code == 404
         assert customer.get(f'/api/public/submissions/{draft["access_token"]}').json()['text'] == 'Private before I send.'
-        assert customer.post(f'/api/public/submissions/{draft["access_token"]}/submit',json={}).status_code == 200
+        assert customer.post(f'/api/public/submissions/{draft["access_token"]}/submit',json={'draft_version': customer.get((f"/api/public/submissions/{draft['access_token']}/submit").removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 200
         assert client.get(f'/api/feedback/{fid}').status_code == 200
 
 

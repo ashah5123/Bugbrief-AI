@@ -81,7 +81,7 @@ Starting work, marking ready to retest, or resolving requires an assigned employ
 
 ## Draft conflicts, conversation history and report archives
 
-Customer draft saves now include the version they were based on. If another tab changes the draft, saving shows a conflict instead of replacing those answers. **Load latest draft** preserves an unsaved copy for comparison; **Use my copy for editing** is an explicit choice to review and save that copy over the latest draft. Local recovery remains optional when browser storage is unavailable. Exact retries of the same committed fields are safe. API clients updating a customer draft must echo its `draft_version`; missing versions receive 428 and conflicting changes receive 409.
+Customer draft saves now include the version they were based on. If another tab changes the draft, saving shows a conflict instead of replacing those answers. **Load latest draft** preserves an unsaved copy for comparison; **Use my copy for editing** is an explicit choice to review and save that copy over the latest draft. Local recovery remains optional when browser storage is unavailable. Exact retries of the same committed fields are safe. API clients updating a customer draft or submitting it must echo its `draft_version`; missing versions receive 428 and conflicting changes receive 409. Final send atomically checks the version shown on the review screen, including screenshot/answer changes made by another tab. The interface requires a new review after a conflict. Retrying a committed send with the same version returns its receipt without duplicate notifications.
 
 Conversations provide **Load older replies** in batches of 100. Loading history keeps private company notes out of customer views, and refreshes/new replies retain the loaded history. If a burst of new replies has no overlap with the loaded page, the conversation resets to the newest page with a notice so earlier pages can be loaded again without an unseen gap. Existing API clients can still request the original latest-message array; `?paged=true` returns items and a `next_before` cursor.
 
@@ -98,6 +98,12 @@ In **Team & account → Project access**, the owner chooses each employee's proj
 | Manager | Contributor access plus project settings and feedback-link management |
 
 **Allow permanent deletion** is a separate grant and is off by default, including for Managers. Only the workspace owner can assign roles, grant deletion or change membership. The server checks permissions on direct API writes; disabled controls are only the interface. Employees can still create a project and become its Manager. Upgrading existing memberships makes them Contributors without permanent deletion; the owner can grant additional access as needed.
+
+## Verified email for private customer projects
+
+For **Invited customer accounts only** projects, an owner's email-based grant stays pending until that customer verifies the email on their account. The owner sees the pending status under **Project access**. The customer sees a pending private invitation and can resend verification from their customer account or a blocked project link. Completing the verification message activates existing, non-revoked grants; it never creates membership or restores removed access.
+
+Until verification, private project details/links, report lists, direct submissions, screenshots, replies, archive/delete/retest actions, guest-report claims and notification reads/delivery remain inaccessible. Pending project cards use a generic invitation label instead of exposing private project names or intake tokens. This requirement applies in local test-outbox mode too. Link-based projects continue accepting guests and unverified customer accounts under their existing permissions. Existing account verification flags are preserved; no accounts are automatically marked verified during upgrade.
 
 ## Guided customer bug reports
 

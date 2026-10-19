@@ -60,12 +60,17 @@ def customer_can_access(db, account_id, project_id):
     project = db.get(Project, project_id)
     if not project or (member and member.revoked_at):
         return False
-    return project.customer_access == 'link' or bool(member)
+    account = db.get(CustomerAccount, account_id) if account_id else None
+    return project.customer_access == 'link' or bool(member and account and account.email_verified_at)
 
 
 def require_customer_project(request, db, project_id):
     account = current_customer(request, db)
     if not customer_can_access(db, account.id if account else '', project_id):
+        project = db.get(Project, project_id)
+        member = customer_membership(db, account.id, project_id) if account else None
+        if project and project.customer_access == 'members' and member and not member.revoked_at and account and not account.email_verified_at:
+            raise HTTPException(403, 'Verify your email to activate access to this private project. Open your customer account to resend verification.')
         raise HTTPException(403 if account else 401, 'Sign in with a customer account invited to this project. Contact the workspace owner if your access was removed.')
 
 
@@ -82,7 +87,9 @@ def access(project_id: str, db: Session = Depends(get_db)):
         'employees': [{'id': m.id, 'name': m.name, 'email': m.email,
                        'role': db.get(EmployeeProject, (m.id, project_id)).role,
                        'can_delete': bool(db.get(EmployeeProject, (m.id, project_id)).can_delete)} for m in employees],
-        'customers': [{'id': m.id, 'name': m.name, 'email': m.email, 'revoked_at': membership.revoked_at} for m, membership in customers]}
+        'customers': [{'id': m.id, 'name': m.name, 'email': m.email, 'revoked_at': membership.revoked_at,
+                       'email_verified': bool(m.email_verified_at),
+                       'verification_required': project.customer_access == 'members' and not bool(m.email_verified_at)} for m, membership in customers]}
 
 
 class CustomerAccess(StrictModel):

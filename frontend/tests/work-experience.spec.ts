@@ -35,7 +35,7 @@ test("employee lands on personal work queues; other assignees and projects stay 
     const records: string[] = [];
     for (const stage of ["waiting", "retest"]) {
       const record = await post(request, `/public/intake/${link.token}/submissions`, { text: `My ${stage} customer issue`, client_nonce: `personal-${info.project.name}-${stage}-123456789` });
-      await post(request, `/public/submissions/${record.access_token}/submit`, {});
+      await post(request, `/public/submissions/${record.access_token}/submit`, { draft_version: record.draft_version });
       const items = await (await request.get(`${api}/feedback`)).json();
       const item = items.find((row: { text: string; project_id: string }) => row.project_id === project.id && row.text === `My ${stage} customer issue`);
       records.push(item.id);
@@ -98,7 +98,7 @@ test("new customer connects a named team; returning customer sees reports and re
     await portal.getByRole("region", { name: "Your next step", exact: true }).getByRole("link", { name: "Report an issue", exact: true }).click();
     await expect(portal.locator(".customer-project")).toContainText("Managed by Acme support team");
     const record = await post(customer.request, `/public/intake/${link.token}/submissions`, { text: "My checkout needs fixing", client_nonce: `guided-${info.project.name}-report-123456789` });
-    await post(customer.request, `/public/submissions/${record.access_token}/submit`, {});
+    await post(customer.request, `/public/submissions/${record.access_token}/submit`, { draft_version: record.draft_version });
     const draft = await post(customer.request, `/public/intake/${link.token}/submissions`, { text: "An unfinished report", client_nonce: `guided-${info.project.name}-draft-123456789` });
     const items = await (await request.get(`${api}/feedback`)).json();
     const report = items.find((row: { text: string; project_id: string }) => row.project_id === project.id && row.text === "My checkout needs fixing");

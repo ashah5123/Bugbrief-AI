@@ -127,7 +127,7 @@ def test_account_owns_new_reports_across_sessions_and_cannot_see_other_accounts(
             assert outsider.get(f'/api/public/submissions/{token}').status_code == 404
             assert outsider.put(f'/api/public/submissions/{token}', json={'text': 'Changed'}).status_code == 404
             assert outsider.delete(f'/api/public/submissions/{token}').status_code == 404
-            assert outsider.post(f'/api/public/submissions/{token}/submit', json={}).status_code == 404
+            assert outsider.post(f'/api/public/submissions/{token}/submit', json={'draft_version': outsider.get((f'/api/public/submissions/{token}/submit').removesuffix('/submit')).json().get('draft_version', 1)}).status_code == 404
             assert create(outsider, invitation, nonce).status_code == 404
         alice.post('/api/customer/logout')
         assert alice.get(f'/api/public/submissions/{token}').status_code == 404

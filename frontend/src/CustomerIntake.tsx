@@ -24,6 +24,7 @@ import Conversation from "./Conversation";
 import { CustomerProgress } from "./WorkflowPanel";
 import DeleteReportButton from "./DeleteReportButton";
 import ArchiveReportButton from "./ArchiveReportButton";
+import { VerificationBanner } from "./AccountSecurity";
 import { rememberSubmission, forgetSubmission } from "./customerStorage";
 
 type Context = {
@@ -539,12 +540,16 @@ export default function CustomerIntake({
   }
   async function send() {
     await act("Sending to the agency", async () => {
-      const current = await ensureSaved(true);
-      const value = await api<Record>(
-        `/public/submissions/${current.access_token}/submit`,
+      if (!record) throw new Error("Open and review the latest draft before sending.");
+      let value: Record;
+      try { value = await api<Record>(
+        `/public/submissions/${record.access_token}/submit`,
         "POST",
-        {},
-      );
+        { draft_version: record.draft_version },
+      ); } catch (e) {
+        if (e instanceof ApiError && [409, 428].includes(e.status) && /Draft changed|draft version/.test(e.message)) setDraftConflict(true);
+        throw e;
+      }
       adopt(value);
       setStep("receipt");
     });
@@ -584,11 +589,12 @@ export default function CustomerIntake({
       <div className="customer-unavailable">
         <ShieldCheck size={29} />
         <h1>
-          {(resumeToken || intakeToken) && error.includes("Sign in")
+          {error.includes("Verify your email") ? "Verify your email to open this project." : (resumeToken || intakeToken) && error.includes("Sign in")
             ? "Sign in to view your report."
             : "This feedback link is unavailable."}
         </h1>
         <p>{error || "Ask the agency for a new project link."}</p>
+        {signedIn && error.includes("Verify your email") && <VerificationBanner scope="customer" verified={false} />}
         {(resumeToken || intakeToken) && error.includes("Sign in") && (
           <a
             className="primary-button"
@@ -742,6 +748,7 @@ export default function CustomerIntake({
               <label>
                 What went wrong?
                 <textarea
+                  aria-label="What went wrong?"
                   rows={5}
                   disabled={busy}
                   maxLength={8000}
