@@ -6254,3 +6254,14 @@ code {
 .project-members .team-member { flex-wrap: wrap; }
 .project-members .team-member > div { min-width: 0; max-width: 100%; }
 .employee-permissions select { max-width: 100%; }
+
+.activity-actor { display: block; color: #657855; font-size: 11px; margin: 5px 0; overflow-wrap: anywhere; }
+.project-activity { margin: 20px 0; }
+.project-activity > summary { cursor: pointer; font-weight: 600; color: #405c31; }
+.customer-report-search form { padding: 16px; background: #f8faf3; border: 1px solid #dce6ce; border-radius: 10px; margin-bottom: 14px; }
+.customer-report-search label { display: block; font-size: 12px; color: #4c653b; }
+.customer-report-search input, .customer-report-search select { margin-top: 7px; width: 100%; min-width: 0; }
+.customer-report-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+.customer-search-count { font-size: 12px; color: #687b5b; margin: 12px 0; }
+.progress-timeline li > div { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .customer-report-filters { grid-template-columns: 1fr; } }

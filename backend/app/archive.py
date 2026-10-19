@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 from .db import get_db
 from .schemas import StrictModel
-from .models import now
+from .models import now, IssueEvent
+from .activity import actor_details
 from .jobs import ensure_idle
 from .workflow import visible_feedback
 from .conversation import sent_submission
@@ -23,6 +24,7 @@ async def company_archive(feedback_id: str, data: ArchiveInput, request: Request
     ensure_idle(request.app, feedback_id)
     if bool(feedback.archived_at) != data.archived:
         feedback.archived_at = now() if data.archived else None
+        db.add(IssueEvent(feedback_id=feedback_id, label='Report archived' if data.archived else 'Report restored', visibility='internal', **actor_details(request, db)))
         db.commit()
     return serialize(feedback, db)
 
@@ -32,5 +34,6 @@ async def customer_archive(token: str, data: ArchiveInput, request: Request, db:
     item = sent_submission(db, token, request)
     if bool(item.archived_at) != data.archived:
         item.archived_at = now() if data.archived else None
+        db.add(IssueEvent(feedback_id=item.feedback_id, label='Archived in your list' if data.archived else 'Restored to your list', visibility='customer', **actor_details(request, db, customer=True, guest_name=item.reporter_name)))
         db.commit()
     return snapshot(db, item)

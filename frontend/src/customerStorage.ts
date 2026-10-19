@@ -2,6 +2,8 @@ import type { IssueWorkflow } from "./types";
 export type SavedSubmission = {
   access_token: string;
   project_name: string;
+  project_id?: string;
+  draft_version?: number;
   reference: string;
   stage: string;
   archived_at?: string | null;

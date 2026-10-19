@@ -17,6 +17,7 @@ from .models import (AccountAction, MailMessage, CustomerAccount, CustomerSessio
 from .schemas import StrictModel
 from .customer_auth import Credentials, current_customer, password_hash, throttle
 from .employee_auth import current_employee
+from .activity import actor_details, project_event
 
 router = APIRouter()
 ACK = {'message': 'If the account is eligible, a message will be sent. Check your inbox.'}
@@ -142,6 +143,13 @@ def complete(scope: Literal['customer', 'employee'], kind: Literal['reset', 'ver
         db.execute(delete(sessions).where(sessions.account_id == account.id))
     else:
         consume_action(db, action)
+        if scope == 'customer' and not account.email_verified_at:
+            from .models import CustomerMembership, Project, ProjectEvent
+            project_ids = db.scalars(select(CustomerMembership.project_id).join(Project, Project.id == CustomerMembership.project_id)
+                .where(CustomerMembership.account_id == account.id, CustomerMembership.revoked_at.is_(None), Project.customer_access == 'members')).all()
+            for project_id in project_ids:
+                db.add(ProjectEvent(project_id=project_id, actor_name=account.name, actor_role='customer',
+                    label='Private invitation activated after email verification', note=account.name))
         account.email_verified_at = now()
     db.commit()
     return {'message': 'Password updated. Sign in with your new password.' if kind == 'reset' else 'Email verified. You can return to your account.'}
@@ -181,11 +189,14 @@ def revoke_invitation(invitation_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete('/api/team/employees/{employee_id}', dependencies=[Depends(require_owner)])
-def remove_employee(employee_id: str, db: Session = Depends(get_db)):
+def remove_employee(employee_id: str, request: Request, db: Session = Depends(get_db)):
     employee = db.get(EmployeeAccount, employee_id)
     if not employee:
         raise HTTPException(404, 'Employee not found.')
     if not employee.disabled_at:
+        from .models import EmployeeProject
+        for project_id in db.scalars(select(EmployeeProject.project_id).where(EmployeeProject.employee_id == employee_id)):
+            project_event(db, request, project_id, 'Employee workspace access removed', employee.name)
         employee.disabled_at = now()
         db.execute(delete(EmployeeSession).where(EmployeeSession.account_id == employee_id))
         db.execute(update(AccountAction).where(AccountAction.scope == 'employee', AccountAction.email == employee.email,
@@ -194,17 +205,21 @@ def remove_employee(employee_id: str, db: Session = Depends(get_db)):
             progress.assigned_employee_id = None
             progress.version += 1
             progress.updated_at = now()
-            db.add(IssueEvent(feedback_id=progress.feedback_id, label='Assignment removed', note='The team will assign a new employee.'))
+            db.add(IssueEvent(feedback_id=progress.feedback_id, label='Assignment removed', note='The team will assign a new employee.', **actor_details(request, db)))
     db.commit()
     return {'removed': True}
 
 
 @router.post('/api/team/employees/{employee_id}/restore', dependencies=[Depends(require_owner)])
-def restore_employee(employee_id: str, db: Session = Depends(get_db)):
+def restore_employee(employee_id: str, request: Request, db: Session = Depends(get_db)):
     employee = db.get(EmployeeAccount, employee_id)
     if not employee:
         raise HTTPException(404, 'Employee not found.')
-    employee.disabled_at = None
+    if employee.disabled_at:
+        from .models import EmployeeProject
+        for project_id in db.scalars(select(EmployeeProject.project_id).where(EmployeeProject.employee_id == employee_id)):
+            project_event(db, request, project_id, 'Employee workspace access restored', employee.name)
+        employee.disabled_at = None
     db.commit()
     return {'restored': True}
 

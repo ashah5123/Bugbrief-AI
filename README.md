@@ -39,7 +39,7 @@ Stop only BugBrief’s backend, preserve `backend/.env`, and back up `data/bugbr
 .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Restart the backend with the command below. The migration upgrades to `0016` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
+Restart the backend with the command below. The migration upgrades to `0017` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
 
 ## Run
 
@@ -86,6 +86,14 @@ Customer draft saves now include the version they were based on. If another tab 
 Conversations provide **Load older replies** in batches of 100. Loading history keeps private company notes out of customer views, and refreshes/new replies retain the loaded history. If a burst of new replies has no overlap with the loaded page, the conversation resets to the newest page with a notice so earlier pages can be loaded again without an unseen gap. Existing API clients can still request the original latest-message array; `?paged=true` returns items and a `next_before` cursor.
 
 Use **Archive report** to hide a report from active lists, then **Archived reports → Restore report** to bring it back. The company archive applies to the workspace; a customer's archive applies only to that customer's report list. These choices are independent. Archiving keeps the report, screenshots, replies and progress, does not resolve the issue, and allows further replies and notifications. Permanent deletion remains a separate confirmed action. Company archives can include drafts; customers can archive submitted reports.
+
+## Customer search and activity history
+
+Signed-in customers can use **Search your reports** to search the full original description, project name or report reference. Combine project, status and action-needed filters to find drafts, reports awaiting a reply or fixes ready to retest. Active and archived reports have separate search scopes; **Reset report filters** clears the selected criteria. Search returns only the current customer's accessible reports, including verification and revoked-access restrictions.
+
+Report progress history includes **Load older updates** in pages of 50, with the name and role responsible for new changes. Previously loaded pages remain available during ordinary refreshes. Historical entries without saved attribution show **Actor not recorded**. Customers see public progress and their own archive actions; employees see public progress and internal triage/company archive actions. Internal changes do not clear a customer's waiting-for-reply state. Viewers can read older history while report write controls remain disabled.
+
+Owners can open **Team → Project access → Project activity history** for new project/settings, collection-link and access changes, including employee role/deletion grants, membership removal/restoration and private invitation activation. This owner-only history records display names and changed setting labels without storing access codes or intake tokens. Earlier permission changes cannot be reconstructed from this migration.
 
 ## Employee permissions
 

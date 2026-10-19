@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from .db import get_db
 from .models import Feedback, CustomerSubmission, EmployeeAccount, EmployeeProject, IssueProgress, IssueEvent, ReportMessage, now
 from .schemas import StrictModel
+from .activity import actor_details, history_page
 
 router = APIRouter()
 LABELS = {'new': 'New', 'needs_information': 'Needs information', 'in_progress': 'In progress',
@@ -43,6 +44,7 @@ def waiting_since(db, feedback, status):
         ReportMessage.author_role == 'company'))
     company_update = db.scalar(select(func.max(IssueEvent.created_at)).where(
         IssueEvent.feedback_id == feedback.id,
+        IssueEvent.visibility == 'public',
         ~IssueEvent.label.in_(['Customer confirmed the fix', 'Customer says the issue is still happening']),
         (IssueEvent.note != '') | IssueEvent.label.like('Status changed to %') |
         IssueEvent.label.like('Report reopened%')))
@@ -66,13 +68,11 @@ def progress_snapshot(db, feedback, public=False, history=True):
                      due_date=progress.due_date if progress else None,
                      waiting_since=waiting_since(db, feedback, status))
     if history:
-        events = db.scalars(select(IssueEvent).where(IssueEvent.feedback_id == feedback.id)
-            .order_by(IssueEvent.created_at.desc(), IssueEvent.id.desc()).limit(50)).all()
-        total = db.scalar(select(func.count()).select_from(IssueEvent).where(IssueEvent.feedback_id == feedback.id))
-        value['events'] = [{'id': event.id, 'label': event.label, 'note': event.note, 'created_at': event.created_at}
-                           for event in reversed(events)] or [
-            {'id': 'received', 'label': 'Report received', 'note': '', 'created_at': received_at(db, feedback)}]
-        value['history_truncated'] = total > 50
+        page = history_page(db, IssueEvent, feedback.id, audience='customer' if public else 'company')
+        value['events'] = page['items'] or [
+            {'id': 'received', 'label': 'Report received', 'note': '', 'created_at': received_at(db, feedback), 'actor_name': None, 'actor_role': None}]
+        value['history_truncated'] = bool(page['next_before'])
+        value['history_before'] = page['next_before']
     return value
 
 
@@ -146,13 +146,13 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, request: Reque
         else:
             db.add(IssueProgress(feedback_id=feedback_id, **values))
             db.flush()
-            db.add(IssueEvent(feedback_id=feedback_id, label='Report received', note='', created_at=received_at(db, feedback)))
+            db.add(IssueEvent(feedback_id=feedback_id, label='Report received', note='', created_at=received_at(db, feedback), actor_name='System', actor_role='system'))
         parts = []
         if data.status != previous:
             parts.append('Report reopened' if previous == 'resolved' else 'Status changed to ' + LABELS[data.status])
         if previous_employee != data.assigned_employee_id:
             parts.append('Assigned to ' + employee.name if employee else 'Assignment removed')
-        db.add(IssueEvent(feedback_id=feedback_id, label=' · '.join(parts) or 'Update from the company', note=note, created_at=stamp))
+        db.add(IssueEvent(feedback_id=feedback_id, label=' · '.join(parts) or 'Update from the company', note=note, created_at=stamp, **actor_details(request, db)))
         from .notifications import emit, add_alert, deliver_pending
         if data.status != previous or note:
             emit(db, request, feedback, 'retest_requested' if data.status == 'ready_to_retest' else 'progress_update',
@@ -187,7 +187,7 @@ class TriageUpdate(StrictModel):
 
 
 @router.patch('/api/feedback/{feedback_id}/triage')
-def update_triage(feedback_id: str, data: TriageUpdate, db: Session = Depends(get_db)):
+def update_triage(feedback_id: str, data: TriageUpdate, request: Request, db: Session = Depends(get_db)):
     feedback = visible_feedback(db, feedback_id)
     current = db.get(IssueProgress, feedback_id)
     version = current.version if current else 0
@@ -205,7 +205,8 @@ def update_triage(feedback_id: str, data: TriageUpdate, db: Session = Depends(ge
         else:
             db.add(IssueProgress(feedback_id=feedback_id, status='new', **values))
             db.flush()
-            db.add(IssueEvent(feedback_id=feedback_id, label='Report received', note='', created_at=received_at(db, feedback)))
+            db.add(IssueEvent(feedback_id=feedback_id, label='Report received', note='', created_at=received_at(db, feedback), actor_name='System', actor_role='system'))
+        db.add(IssueEvent(feedback_id=feedback_id, label='Triage updated', note='Priority: ' + data.priority + '. Due date: ' + (data.due_date or 'Not set'), visibility='internal', **actor_details(request, db)))
         db.commit()
     except IntegrityError:
         db.rollback()

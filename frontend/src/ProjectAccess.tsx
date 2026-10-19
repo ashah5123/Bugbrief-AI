@@ -1,3 +1,4 @@
+import ActivityTimeline from "./ActivityTimeline";
 import { useEffect, useState } from "react";
 import { api, type Project } from "./types";
 type Member = {
@@ -163,6 +164,9 @@ export default function ProjectAccess() {
               Add to project
             </button>
           </form>
+          <details className="project-activity"><summary>Project activity history</summary>
+            <ActivityTimeline key={project} endpoint={`/projects/${project}/activity`} title="Project activity" refreshKey={access} />
+          </details>
           {(["employees", "customers"] as const).map((group) => (
             <div key={group} className="project-members">
               <h3>

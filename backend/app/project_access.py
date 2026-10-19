@@ -12,6 +12,7 @@ from .employee_auth import current_employee
 from .customer_auth import current_customer
 from .account_management import require_owner, EmailInput
 from .schemas import StrictModel
+from .activity import actor_details, project_event
 
 router = APIRouter()
 
@@ -102,27 +103,35 @@ class EmployeePermissions(StrictModel):
 
 
 @router.patch('/api/projects/{project_id}/members/employee/{member_id}', dependencies=[Depends(require_owner)])
-def employee_permissions(project_id: str, member_id: str, data: EmployeePermissions, db: Session = Depends(get_db)):
+def employee_permissions(project_id: str, member_id: str, data: EmployeePermissions, request: Request, db: Session = Depends(get_db)):
     grant = db.get(EmployeeProject, (member_id, project_id))
     if not grant:
         raise HTTPException(404, 'Employee project membership not found.')
-    grant.role, grant.can_delete = data.role, int(data.can_delete)
+    if grant.role != data.role or bool(grant.can_delete) != data.can_delete:
+        employee = db.get(EmployeeAccount, member_id)
+        project_event(db, request, project_id, 'Employee permissions changed',
+            f'{employee.name}: {grant.role} → {data.role}. Permanent deletion: {"allowed" if grant.can_delete else "not allowed"} → {"allowed" if data.can_delete else "not allowed"}.')
+        grant.role, grant.can_delete = data.role, int(data.can_delete)
     db.commit()
     return access(project_id, db)
 
 
 @router.patch('/api/projects/{project_id}/access', dependencies=[Depends(require_owner)])
-def change_access(project_id: str, data: CustomerAccess, db: Session = Depends(get_db)):
+def change_access(project_id: str, data: CustomerAccess, request: Request, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(404, 'Project not found.')
-    project.customer_access = data.mode
+    if project.customer_access != data.mode:
+        project_event(db, request, project_id, 'Customer access mode changed',
+            ('Anyone with the project link' if project.customer_access == 'link' else 'Invited verified customers') + ' → ' +
+            ('Anyone with the project link' if data.mode == 'link' else 'Invited verified customers'))
+        project.customer_access = data.mode
     db.commit()
     return access(project_id, db)
 
 
 @router.post('/api/projects/{project_id}/members/{role}', dependencies=[Depends(require_owner)])
-def add_member(project_id: str, role: Literal['employee', 'customer'], data: EmailInput, db: Session = Depends(get_db)):
+def add_member(project_id: str, role: Literal['employee', 'customer'], data: EmailInput, request: Request, db: Session = Depends(get_db)):
     if not db.get(Project, project_id):
         raise HTTPException(404, 'Project not found.')
     model = EmployeeAccount if role == 'employee' else CustomerAccount
@@ -132,9 +141,12 @@ def add_member(project_id: str, role: Literal['employee', 'customer'], data: Ema
     if role == 'employee':
         if not employee_has_project(db, member.id, project_id):
             db.add(EmployeeProject(employee_id=member.id, project_id=project_id))
+            project_event(db, request, project_id, 'Employee added to project', member.name)
     else:
         membership = customer_membership(db, member.id, project_id)
         if membership:
+            if membership.revoked_at:
+                project_event(db, request, project_id, 'Customer project access restored', member.name)
             membership.revoked_at = None
             active = db.scalar(select(IntakeLink).where(IntakeLink.project_id == project_id, IntakeLink.revoked_at.is_(None)))
             if active:
@@ -145,26 +157,32 @@ def add_member(project_id: str, role: Literal['employee', 'customer'], data: Ema
                 link = IntakeLink(project_id=project_id, token=secrets.token_urlsafe(32))
                 db.add(link); db.flush()
             db.add(CustomerMembership(account_id=member.id, project_id=project_id, link_id=link.id))
+            project_event(db, request, project_id, 'Customer invitation added', member.name)
     db.commit()
     return access(project_id, db)
 
 
 @router.delete('/api/projects/{project_id}/members/{role}/{member_id}', dependencies=[Depends(require_owner)])
-def remove_member(project_id: str, role: Literal['employee', 'customer'], member_id: str, db: Session = Depends(get_db)):
+def remove_member(project_id: str, role: Literal['employee', 'customer'], member_id: str, request: Request, db: Session = Depends(get_db)):
     if not db.get(Project, project_id):
         raise HTTPException(404, 'Project not found.')
     if role == 'employee':
+        grant = db.get(EmployeeProject, (member_id, project_id))
+        if grant:
+            project_event(db, request, project_id, 'Employee removed from project', db.get(EmployeeAccount, member_id).name)
         db.execute(delete(EmployeeProject).where(EmployeeProject.project_id == project_id, EmployeeProject.employee_id == member_id))
         feedback_ids = select(Feedback.id).where(Feedback.project_id == project_id)
         for progress in db.scalars(select(IssueProgress).where(IssueProgress.feedback_id.in_(feedback_ids), IssueProgress.assigned_employee_id == member_id)).all():
             progress.assigned_employee_id = None
             progress.version += 1
             progress.updated_at = now()
-            db.add(IssueEvent(feedback_id=progress.feedback_id, label='Assignment removed', note='The team will assign a new employee.'))
+            db.add(IssueEvent(feedback_id=progress.feedback_id, label='Assignment removed', note='The team will assign a new employee.', **actor_details(request, db)))
     else:
         member = customer_membership(db, member_id, project_id)
         if not member:
             raise HTTPException(404, 'Customer membership not found.')
-        member.revoked_at = now()
+        if not member.revoked_at:
+            project_event(db, request, project_id, 'Customer project access removed', db.get(CustomerAccount, member_id).name)
+            member.revoked_at = now()
     db.commit()
     return access(project_id, db)

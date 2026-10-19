@@ -165,6 +165,9 @@ class IssueProgress(Base):
 
 class IssueEvent(Base):
     __tablename__ = 'issue_events'
+    actor_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String, nullable=True)
+    visibility: Mapped[str] = mapped_column(String, default='public', server_default='public')
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
     label: Mapped[str] = mapped_column(String(250))
@@ -214,6 +217,17 @@ class EmployeeProject(Base):
     can_delete: Mapped[int] = mapped_column(Integer, default=0, server_default='0')
     employee_id: Mapped[str] = mapped_column(ForeignKey('employee_accounts.id'), primary_key=True)
     project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), primary_key=True)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
+class ProjectEvent(Base):
+    __tablename__ = 'project_events'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    project_id: Mapped[str] = mapped_column(ForeignKey('projects.id'), index=True)
+    actor_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    actor_role: Mapped[str | None] = mapped_column(String, nullable=True)
+    label: Mapped[str] = mapped_column(String(200))
+    note: Mapped[str] = mapped_column(Text, default='')
     created_at: Mapped[str] = mapped_column(String, default=now)
 
 

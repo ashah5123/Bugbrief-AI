@@ -1,9 +1,10 @@
+import ActivityTimeline from "./ActivityTimeline";
 import DuplicateReports from "./DuplicateReports";
 import NextStep from "./NextStep";
 import TriagePanel from "./TriagePanel";
 import Conversation from "./Conversation";
 import { useEffect, useRef, useState } from "react";
-import { Check, Clock3, LoaderCircle, UserRound } from "lucide-react";
+import { Check, LoaderCircle, UserRound } from "lucide-react";
 import { api, type IssueWorkflow, type IssueEmployee } from "./types";
 export const workflowLabels: Record<string, string> = {
   new: "New",
@@ -41,32 +42,8 @@ export function WorkflowBadge({
     </span>
   );
 }
-export function ProgressTimeline({ workflow }: { workflow: IssueWorkflow }) {
-  return (
-    <div className="progress-timeline">
-      <h4>
-        <Clock3 size={14} />
-        Progress history
-      </h4>
-      {workflow.history_truncated && (
-        <small>Showing the latest 50 updates.</small>
-      )}
-      <ol>
-        {[...(workflow.events || [])].reverse().map((event) => (
-          <li key={event.id}>
-            <span className="timeline-dot" />
-            <div>
-              <strong>{event.label}</strong>
-              <time dateTime={event.created_at}>
-                {new Date(event.created_at).toLocaleString()}
-              </time>
-              {event.note && <p>{event.note}</p>}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
+export function ProgressTimeline({ workflow, endpoint }: { workflow: IssueWorkflow; endpoint: string }) {
+  return <ActivityTimeline endpoint={endpoint} initial={{ items: workflow.events || [], next_before: workflow.history_before || null }} />;
 }
 export function CustomerProgress({
   workflow,
@@ -156,7 +133,7 @@ export function CustomerProgress({
           )}
         </div>
       )}
-      <ProgressTimeline workflow={workflow} />
+      <ProgressTimeline workflow={workflow} endpoint={`/public/submissions/${token}/activity`} />
     </section>
   );
 }
@@ -369,8 +346,10 @@ export default function WorkflowPanel({
             </button>
           </div>
         </form>
-        <ProgressTimeline workflow={workflow} />
       </section>
+      </fieldset>
+      <ProgressTimeline workflow={workflow} endpoint={`/feedback/${feedbackId}/activity`} />
+      <fieldset className="permission-controls" disabled={readOnly}>
       <DuplicateReports key={`duplicates-${feedbackId}`} feedbackId={feedbackId} employees={employees} onWorkflow={onChange} />
       </fieldset>
       <Conversation key={feedbackId} feedbackId={feedbackId} readOnly={readOnly} />

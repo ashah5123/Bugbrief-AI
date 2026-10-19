@@ -25,6 +25,7 @@ from .conversation import router as conversation_router
 from .duplicates import router as duplicates_router
 from .reply_media import MAX_REPLY_BODY
 from .archive import router as archive_router
+from .activity import router as activity_router, actor_details, project_event
 from .account_management import router as account_management_router
 from .project_access import router as access_router, company_project_ids, require_company_project, require_project_action, project_permissions
 from .employee_auth import current_employee
@@ -67,6 +68,7 @@ app.include_router(account_management_router)
 app.include_router(access_router)
 app.include_router(notification_router)
 app.include_router(archive_router)
+app.include_router(activity_router)
 
 @app.middleware('http')
 async def local_write_guard(request: Request, call_next):
@@ -141,14 +143,19 @@ async def create_project(data: ProjectIn, request: Request, db: Session = Depend
     employee = current_employee(request, db)
     if employee:
         db.add(EmployeeProject(employee_id=employee.id, project_id=project.id, role='manager'))
+    project_event(db, request, project.id, 'Project created', 'Creator received Manager access without permanent deletion.' if employee else '')
     db.commit()
     return serialize(project)
 
 @app.put('/api/projects/{project_id}')
-async def edit_project(project_id: str, data: ProjectIn, db: Session = Depends(get_db)):
+async def edit_project(project_id: str, data: ProjectIn, request: Request, db: Session = Depends(get_db)):
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(404, 'Project not found')
+    changed = [label for key, label in [('name', 'Name'), ('url', 'Website URL'), ('team_name', 'Team name')]
+               if key in data.model_fields_set and getattr(project, key) != getattr(data, key)]
+    if changed:
+        project_event(db, request, project_id, 'Project settings changed', ', '.join(changed))
     project.name, project.url = data.name, data.url
     if 'team_name' in data.model_fields_set:
         project.team_name = data.team_name
@@ -200,7 +207,7 @@ async def edit_feedback(feedback_id: str, data: FeedbackIn, request: Request, db
                 progress.assigned_employee_id = None
                 progress.version += 1
                 progress.updated_at = now()
-                db.add(IssueEvent(feedback_id=item.id, label='Assignment removed', note='The report moved to another project. The team will assign an employee from that project.'))
+                db.add(IssueEvent(feedback_id=item.id, label='Assignment removed', note='The report moved to another project. The team will assign an employee from that project.', **actor_details(request, db)))
     for key, value in data.model_dump().items():
         setattr(item, key, value)
     evidence_changed(item)

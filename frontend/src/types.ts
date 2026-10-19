@@ -1,3 +1,4 @@
+import type { ActivityEvent } from "./ActivityTimeline";
 import type { GuidedAnswers } from "./GuidedDetails";
 
 export type Project = {
@@ -79,7 +80,8 @@ export type IssueWorkflow = {
   assigned_employee_id?: string | null;
   version?: number;
   updated_at: string;
-  events?: { id: string; label: string; note: string; created_at: string }[];
+  events?: ActivityEvent[];
+  history_before?: string | null;
   history_truncated?: boolean;
 };
 export type Feedback = {

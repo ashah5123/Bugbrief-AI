@@ -16,6 +16,7 @@ from .jobs import ensure_idle, evidence_changed, run_job, usage, day
 from .deletion import erase_feedback
 from .customer_auth import current_customer
 from .workflow import progress_snapshot
+from .activity import project_event
 
 router = APIRouter()
 
@@ -99,21 +100,24 @@ def snapshot(db, item):
                              'analyzed': a.analysis is not None} for a in attachments(db, feedback.id)]}
 
 @router.post('/api/projects/{project_id}/intake-link')
-async def project_link(project_id: str, db: Session = Depends(get_db)):
+async def project_link(project_id: str, request: Request, db: Session = Depends(get_db)):
     if db.get(Project, project_id) is None:
         raise HTTPException(404, 'Project not found')
     link = db.scalar(select(IntakeLink).where(IntakeLink.project_id == project_id, IntakeLink.revoked_at.is_(None)))
     if link is None:
         link = IntakeLink(project_id=project_id, token=secrets.token_urlsafe(32))
         db.add(link)
+        project_event(db, request, project_id, 'Customer feedback link created')
         db.commit()
     return {'token': link.token, 'created_at': link.created_at}
 
 @router.delete('/api/projects/{project_id}/intake-link')
-async def revoke_link(project_id: str, db: Session = Depends(get_db)):
+async def revoke_link(project_id: str, request: Request, db: Session = Depends(get_db)):
     links = db.scalars(select(IntakeLink).where(IntakeLink.project_id == project_id, IntakeLink.revoked_at.is_(None))).all()
     for link in links:
         link.revoked_at = now()
+    if links:
+        project_event(db, request, project_id, 'Customer feedback link closed')
     db.commit()
     return {'revoked': True}
 

@@ -572,3 +572,49 @@ with TestClient(app) as c:
     with sqlite3.connect(path) as db:
         assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
         assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+
+
+def test_activity_upgrade_keeps_legacy_history_and_actor_records_survive_restart(tmp_path):
+    import sqlite3
+    root=Path(__file__).resolve().parents[2]
+    path=tmp_path/'activity.db'
+    env={**os.environ,'DATABASE_URL':f'sqlite:///{path}','AGENCY_ACCESS_CODE':'activity-restart-code'}
+    def migrate(target):
+        subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade',target],cwd=root,env=env,check=True,capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+    migrate('0016')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects(id,name,url,created_at,team_name,customer_access) VALUES ('p','Retained project','','old','','link')")
+        db.execute("INSERT INTO feedback(id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Retained words','','','','draft',1,'old','old')")
+        db.execute("INSERT INTO issue_events(id,feedback_id,label,note,created_at) VALUES ('legacy','f','Original event','Original note','old')")
+    migrate('head')
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='activity-restart-code'
+    rows=c.get('/api/feedback/f/activity').json()['items']
+    assert rows[0]['id']=='legacy' and rows[0]['actor_name'] is None
+    assert rows[0]['note']=='Original note'
+    assert c.patch('/api/feedback/f/archive',json={'archived':True}).status_code==200
+    assert c.patch('/api/projects/p/access',json={'mode':'members'}).status_code==200
+""")
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='activity-restart-code'
+    rows=c.get('/api/feedback/f/activity').json()['items']
+    event=next(event for event in rows if event['label']=='Report archived')
+    assert event['actor_name']=='Workspace owner' and event['actor_role']=='owner'
+    project=c.get('/api/projects/p/activity').json()['items']
+    assert project[0]['label']=='Customer access mode changed'
+    assert project[0]['actor_name']=='Workspace owner'
+    assert c.get('/api/feedback/f').json()['text']=='Retained words'
+    assert c.delete('/api/feedback/f').status_code==200
+    assert c.get('/api/feedback/f/activity').status_code==404
+""")
+    with sqlite3.connect(path) as db:
+        assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+        assert db.execute('PRAGMA foreign_key_check').fetchall()==[]

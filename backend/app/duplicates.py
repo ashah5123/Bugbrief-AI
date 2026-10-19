@@ -13,6 +13,7 @@ from .models import (Feedback, CustomerSubmission, EmployeeAccount, EmployeeProj
                      IssueEvent, ReportMessage, DuplicateGroup, DuplicateMember, DuplicateAction, now)
 from .schemas import StrictModel
 from .workflow import visible_feedback, progress_snapshot, received_at, LABELS
+from .activity import actor_details
 from .notifications import emit, add_alert, deliver_pending
 from .employee_auth import current_employee
 from .customer_auth import throttle
@@ -273,8 +274,8 @@ async def shared_workflow(feedback_id: str, data: SharedWorkflow, request: Reque
                     raise conflict()
             else:
                 db.add(IssueProgress(feedback_id=row.id, **values)); db.flush()
-                db.add(IssueEvent(feedback_id=row.id, label='Report received', note='', created_at=received_at(db, row)))
-            db.add(IssueEvent(feedback_id=row.id, label='Status changed to ' + LABELS[data.status], note=data.note, created_at=stamp))
+                db.add(IssueEvent(feedback_id=row.id, label='Report received', note='', created_at=received_at(db, row), actor_name='System', actor_role='system'))
+            db.add(IssueEvent(feedback_id=row.id, label='Status changed to ' + LABELS[data.status], note=data.note, created_at=stamp, **actor_details(request, db)))
             emit(db, request, row, 'retest_requested' if data.status == 'ready_to_retest' else 'progress_update',
                 'A fix is ready to retest' if data.status == 'ready_to_retest' else 'Report progress updated', customer=True)
             if previous_employee != employee.id and (actor is None or actor.id != employee.id):

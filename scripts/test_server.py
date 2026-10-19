@@ -29,6 +29,8 @@ with SessionLocal() as s:
         (CustomerAccount,CustomerSession,'Returning Customer','returning-mobile@example.test',b'k'),
         (CustomerAccount,CustomerSession,'Pending desktop','pending-desktop@example.test',b'p'),
         (CustomerAccount,CustomerSession,'Pending mobile','pending-mobile@example.test',b'q'),
+        (CustomerAccount,CustomerSession,'Search desktop','search-desktop@example.test',b'r'),
+        (CustomerAccount,CustomerSession,'Search mobile','search-mobile@example.test',b's'),
     ]
     for model,sessions,name,email,seed_byte in identities:
         account=model(name=name,email=email,password_hash=hashed)
@@ -44,7 +46,7 @@ with SessionLocal() as s:
     s.add(EmployeeSession(token_hash=hashlib.sha256(token).hexdigest(),account_id=account.id,expires_at=time.time()+3600))
     # Long histories exist only in this disposable database and start archived.
     # Seeding avoids weakening rate limits just to create hundreds of browser-test replies.
-    from app.models import Project, Feedback, IntakeLink, CustomerSubmission, ReportMessage, now
+    from app.models import Project, Feedback, IntakeLink, CustomerSubmission, ReportMessage, IssueEvent, now
     for viewport, byte in [('desktop', b'l'), ('mobile', b'm')]:
         token=base64.urlsafe_b64encode(byte*32).rstrip(b'=').decode()
         project=Project(name='History fixture '+viewport)
@@ -53,6 +55,10 @@ with SessionLocal() as s:
         feedback=Feedback(project_id=project.id,text='Archived history fixture '+viewport,archived_at=now())
         s.add_all([link,feedback]);s.flush()
         s.add(CustomerSubmission(link_id=link.id,feedback_id=feedback.id,access_token=token,client_nonce='history-fixture-nonce-'+viewport,stage='submitted',submitted_at=now(),archived_at=now()))
+        for number in range(140):
+            visibility='public' if number<125 else 'internal' if number<135 else 'customer'
+            label=('Public activity ' if visibility=='public' else 'Private activity ' if visibility=='internal' else 'Customer-only activity ')+str(number)
+            s.add(IssueEvent(feedback_id=feedback.id,label=label,visibility=visibility,note='',actor_name=None if number<5 else 'Fixture customer' if visibility=='customer' else 'Workspace owner' if visibility=='internal' else 'Fixture employee',actor_role=None if number<5 else 'customer' if visibility=='customer' else 'owner' if visibility=='internal' else 'employee',created_at='2026-01-01T00:00:00+00:00'))
         for number in range(215):
             s.add(ReportMessage(feedback_id=feedback.id,visibility='public' if number<205 else 'internal',author_role='company',author_name='Fixture team',body=('Public history ' if number<205 else 'Private history ')+str(number),created_at='2026-01-01T00:00:00+00:00'))
     s.commit()

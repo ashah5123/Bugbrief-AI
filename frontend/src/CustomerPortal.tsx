@@ -1,3 +1,4 @@
+import CustomerReportSearch from "./CustomerReportSearch";
 import NextStep, { nextStep } from "./NextStep";
 import { activateCustomer, clearCustomerDrafts } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
@@ -71,10 +72,12 @@ function Reports({
   items,
   onChange,
   account = false,
+  filtered = false,
 }: {
   items: SavedSubmission[];
   onChange: () => Promise<void> | void;
   account?: boolean;
+  filtered?: boolean;
 }) {
   return items.length ? (
     <div className="customer-report-list">
@@ -128,9 +131,9 @@ function Reports({
   ) : (
     <div className="customer-empty">
       <MessageSquare size={25} />
-      <h3>Your reports will appear here.</h3>
+      <h3>{filtered ? "No reports match these filters." : "Your reports will appear here."}</h3>
       <p>
-        {account
+        {filtered ? "Try another description, reference or filter, or reset your filters." : account
           ? "Choose a connected project to report a problem. Your reports will be available whenever you sign in."
           : "Reports from before you created an account stay available in this browser."}
       </p>
@@ -515,7 +518,7 @@ export default function CustomerPortal({
             </div>
           </div>
           <div className="archive-view-toggle"><button className="secondary-button" aria-pressed={!archiveView} onClick={() => setArchiveView(false)}>Active reports</button><button className="secondary-button" aria-pressed={archiveView} onClick={() => setArchiveView(true)}>Archived reports</button></div>
-          <Reports account items={allItems.filter(item => !!item.archived_at === archiveView)} onChange={refresh} />
+          <CustomerReportSearch items={allItems} archived={archiveView}>{(matches, filtered) => <Reports account items={matches} filtered={filtered} onChange={refresh} />}</CustomerReportSearch>
         </section>
         <section className="my-reports">
           <div className="section-heading">

@@ -14,6 +14,7 @@ from .customer_auth import current_customer, throttle
 from .employee_auth import current_employee
 from .notifications import emit, deliver_pending
 from .reply_media import ReplyImage, MAX_IMAGES, message_images, prior_message, save_reply, image_content
+from .activity import actor_details
 
 router = APIRouter()
 
@@ -125,7 +126,8 @@ def retest(token: str, data: RetestInput, request: Request, background_tasks: Ba
     if changed.rowcount != 1:
         raise HTTPException(409, 'The report changed. Reload it before confirming the fix.')
     db.add(IssueEvent(feedback_id=item.feedback_id,
-        label='Customer confirmed the fix' if data.outcome == 'works' else 'Customer says the issue is still happening', note=note))
+        label='Customer confirmed the fix' if data.outcome == 'works' else 'Customer says the issue is still happening', note=note,
+        **actor_details(request, db, customer=True, guest_name=item.reporter_name)))
     emit(db, request, db.get(Feedback, item.feedback_id), 'retest_result',
          'Customer confirmed the fix' if data.outcome == 'works' else 'Customer says the issue is still happening', company=True)
     db.commit()
