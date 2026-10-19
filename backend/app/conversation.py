@@ -1,5 +1,6 @@
 """Public report replies and strictly company-only notes; customer retest decisions."""
 from typing import Literal
+from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from pydantic import Field, field_validator
 from sqlalchemy import select, update
@@ -12,11 +13,14 @@ from .intake import submission
 from .customer_auth import current_customer, throttle
 from .employee_auth import current_employee
 from .notifications import emit, deliver_pending
+from .reply_media import ReplyImage, MAX_IMAGES, message_images, prior_message, save_reply, image_content
 
 router = APIRouter()
 
 
 class MessageInput(StrictModel):
+    request_id: UUID | None = None
+    attachments: list[ReplyImage] = Field(default_factory=list, max_length=MAX_IMAGES)
     body: str = Field(min_length=1, max_length=4000)
     visibility: Literal['public', 'internal'] = 'public'
 
@@ -34,7 +38,8 @@ def messages(db, feedback_id, public=False):
         query = query.where(ReportMessage.visibility == 'public')
     rows = db.scalars(query.order_by(ReportMessage.created_at.desc(), ReportMessage.id.desc()).limit(100)).all()
     return [{'id': m.id, 'visibility': m.visibility, 'author_role': m.author_role,
-             'author_name': m.author_name, 'body': m.body, 'created_at': m.created_at} for m in reversed(rows)]
+             'author_name': m.author_name, 'body': m.body, 'created_at': m.created_at,
+             'attachments': message_images(db, m.id)} for m in reversed(rows)]
 
 
 def sent_submission(db, token, request):
@@ -51,16 +56,17 @@ def company_messages(feedback_id: str, db: Session = Depends(get_db)):
 
 
 @router.post('/api/feedback/{feedback_id}/messages', status_code=201)
-def company_reply(feedback_id: str, data: MessageInput, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def company_reply(feedback_id: str, data: MessageInput, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     throttle(request, 'company-message', 60)
     feedback = visible_feedback(db, feedback_id)
     employee = current_employee(request, db)
-    db.add(ReportMessage(feedback_id=feedback_id, visibility=data.visibility,
-        author_role='company', author_name=employee.name if employee else 'Workspace owner', body=data.body))
-    emit(db, request, feedback, 'company_reply' if data.visibility == 'public' else 'internal_note',
-         'Company replied' if data.visibility == 'public' else 'Private team note added',
-         company=True, customer=data.visibility == 'public')
-    db.commit()
+    actor = 'employee:' + employee.id if employee else 'owner'
+    if prior_message(db, data, feedback_id, actor):
+        return messages(db, feedback_id)
+    save_reply(db, request, data, feedback_id, actor, 'company', employee.name if employee else 'Workspace owner',
+        lambda: emit(db, request, feedback, 'company_reply' if data.visibility == 'public' else 'internal_note',
+            'Company replied' if data.visibility == 'public' else 'Private team note added',
+            company=True, customer=data.visibility == 'public'))
     background_tasks.add_task(deliver_pending, request.app.state.session_factory)
     return messages(db, feedback_id)
 
@@ -72,16 +78,17 @@ def customer_messages(token: str, request: Request, db: Session = Depends(get_db
 
 
 @router.post('/api/public/submissions/{token}/messages', status_code=201)
-def customer_reply(token: str, data: MessageInput, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def customer_reply(token: str, data: MessageInput, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     throttle(request, 'customer-message', 60)
     item = sent_submission(db, token, request)
     if data.visibility != 'public':
         raise HTTPException(403, 'Customers can only send public replies.')
     account = current_customer(request, db)
-    db.add(ReportMessage(feedback_id=item.feedback_id, visibility='public', author_role='customer',
-        author_name=account.name if account else item.reporter_name or 'Customer', body=data.body))
-    emit(db, request, db.get(Feedback, item.feedback_id), 'customer_reply', 'Customer replied', company=True)
-    db.commit()
+    actor = 'customer:' + account.id if account else 'guest:' + item.feedback_id
+    if prior_message(db, data, item.feedback_id, actor):
+        return messages(db, item.feedback_id, public=True)
+    save_reply(db, request, data, item.feedback_id, actor, 'customer', account.name if account else item.reporter_name or 'Customer',
+        lambda: emit(db, request, db.get(Feedback, item.feedback_id), 'customer_reply', 'Customer replied', company=True))
     background_tasks.add_task(deliver_pending, request.app.state.session_factory)
     return messages(db, item.feedback_id, public=True)
 
@@ -116,3 +123,15 @@ def retest(token: str, data: RetestInput, request: Request, background_tasks: Ba
     background_tasks.add_task(deliver_pending, request.app.state.session_factory)
     db.expire_all()
     return progress_snapshot(db, db.get(Feedback, item.feedback_id), public=True)
+
+
+@router.get('/api/feedback/{feedback_id}/messages/{message_id}/attachments/{image_id}/content')
+def company_image(feedback_id: str, message_id: str, image_id: str, request: Request, db: Session = Depends(get_db)):
+    visible_feedback(db, feedback_id)
+    return image_content(db, request, feedback_id, message_id, image_id)
+
+
+@router.get('/api/public/submissions/{token}/messages/{message_id}/attachments/{image_id}/content')
+def customer_image(token: str, message_id: str, image_id: str, request: Request, db: Session = Depends(get_db)):
+    item = sent_submission(db, token, request)
+    return image_content(db, request, item.feedback_id, message_id, image_id, public=True)

@@ -170,6 +170,9 @@ class IssueEvent(Base):
 
 class ReportMessage(Base):
     __tablename__ = 'report_messages'
+    request_id: Mapped[str | None] = mapped_column(String(36), nullable=True, unique=True)
+    request_actor: Mapped[str | None] = mapped_column(String, nullable=True)
+    request_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), index=True)
     visibility: Mapped[str] = mapped_column(String)
@@ -257,3 +260,18 @@ class DuplicateAction(Base):
     group_id: Mapped[str] = mapped_column(ForeignKey('duplicate_groups.id'), index=True)
     fingerprint: Mapped[str] = mapped_column(String(64))
     count: Mapped[int] = mapped_column(Integer)
+
+
+class MessageAttachment(Base):
+    __tablename__ = 'message_attachments'
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    message_id: Mapped[str] = mapped_column(ForeignKey('report_messages.id'), index=True)
+    filename: Mapped[str] = mapped_column(String(150))
+    caption: Mapped[str] = mapped_column(String(500), default='')
+    storage_key: Mapped[str] = mapped_column(String, unique=True)
+    mime_type: Mapped[str] = mapped_column(String)
+    size: Mapped[int] = mapped_column(Integer)
+    width: Mapped[int] = mapped_column(Integer)
+    height: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str] = mapped_column(String(64))
+    reviewed_at: Mapped[str] = mapped_column(String, default=now)

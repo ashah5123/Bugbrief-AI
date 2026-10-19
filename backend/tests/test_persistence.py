@@ -418,3 +418,57 @@ with TestClient(app) as c:
 """
     for code in (write, read):
         subprocess.run([sys.executable, '-c', code], cwd=root/'backend', env=env, check=True, capture_output=True)
+
+
+def test_reply_screenshot_upgrade_restart_idempotency_and_erasure(tmp_path):
+    import sqlite3
+    root = Path(__file__).resolve().parents[2]
+    path = tmp_path / 'reply-images.db'
+    env = {**os.environ, 'DATABASE_URL': f'sqlite:///{path}', 'AGENCY_ACCESS_CODE': 'reply-images-owner-code',
+           'ATTACHMENTS_DIR':str(tmp_path/'images'), 'MAIL_MODE':'local', 'REPLY_MANIFEST':str(tmp_path/'reply.json')}
+    def migrate(version):
+        subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade',version],cwd=root,env=env,check=True,capture_output=True)
+    migrate('0013')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects (id,name,url,created_at) VALUES ('p','Existing project','','old')")
+        db.execute("INSERT INTO feedback (id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Keep original feedback','','','','draft',4,'old','old')")
+        db.execute("INSERT INTO report_messages (id,feedback_id,visibility,author_role,author_name,body,created_at) VALUES ('legacy','f','public','company','Original author','Preserved conversation','old')")
+    migrate('head')
+    with sqlite3.connect(path) as db:
+        assert db.execute('SELECT body,request_id FROM report_messages').fetchone() == ('Preserved conversation',None)
+        assert not db.execute('PRAGMA foreign_key_check').fetchall()
+    write = """
+import os,json,base64
+from io import BytesIO
+from PIL import Image
+from fastapi.testclient import TestClient
+from app.main import app
+out=BytesIO(); Image.new('RGB',(20,10),'white').save(out,format='PNG')
+payload={'body':'A persistent screenshot reply','request_id':'235cb3eb-fce5-42a6-85d6-dd92b7bc51a5','attachments':[{'filename':'persistent.png','mime_type':'image/png','content_base64':base64.b64encode(out.getvalue()).decode(),'caption':'Persistent caption','reviewed':True}]}
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='reply-images-owner-code'
+    response=c.post('/api/feedback/f/messages',json=payload)
+    assert response.status_code==201
+    message=next(m for m in response.json() if m['attachments'])
+    json.dump({'payload':payload,'message':message},open(os.environ['REPLY_MANIFEST'],'w'))
+"""
+    read = """
+import os,json
+from pathlib import Path
+from fastapi.testclient import TestClient
+from app.main import app
+saved=json.load(open(os.environ['REPLY_MANIFEST']))
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='reply-images-owner-code'
+    assert len(c.post('/api/feedback/f/messages',json=saved['payload']).json())==2
+    message=saved['message']; image=message['attachments'][0]
+    path='/api/feedback/f/messages/'+message['id']+'/attachments/'+image['id']+'/content'
+    assert c.get(path).status_code==200 and image['caption']=='Persistent caption'
+    assert len(list(Path(os.environ['ATTACHMENTS_DIR']).iterdir()))==1
+    assert c.get('/api/feedback/f').json()['version']==4
+    assert c.delete('/api/feedback/f').status_code==200
+    assert c.get(path).status_code==404
+    assert list(Path(os.environ['ATTACHMENTS_DIR']).iterdir())==[]
+"""
+    for code in (write,read):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)

@@ -23,6 +23,7 @@ from .employee_auth import router as employee_router
 from .workflow import router as workflow_router
 from .conversation import router as conversation_router
 from .duplicates import router as duplicates_router
+from .reply_media import MAX_REPLY_BODY
 from .account_management import router as account_management_router
 from .project_access import router as access_router, company_project_ids, require_company_project
 from .employee_auth import current_employee
@@ -90,11 +91,12 @@ async def local_write_guard(request: Request, call_next):
         if origin and origin not in ('http://127.0.0.1:5173', 'http://localhost:5173', 'http://127.0.0.1:8001', 'http://localhost:8001', 'http://127.0.0.1:15173'):
             return JSONResponse({'detail': 'Origin not allowed'}, status_code=403)
         upload = request.method == 'POST' and re.fullmatch(r'/api/(?:feedback/[a-f0-9-]{36}|public/submissions/[A-Za-z0-9_-]{43})/attachments', request.url.path)
-        limit = MAX_BYTES if upload else 32768
+        reply = request.method == 'POST' and re.fullmatch(r'/api/(?:feedback/[a-f0-9-]{36}|public/submissions/[A-Za-z0-9_-]{43})/messages', request.url.path)
+        limit = MAX_BYTES if upload else MAX_REPLY_BODY if reply else 32768
         body = bytearray()
         async for chunk in request.stream():
             if len(body) + len(chunk) > limit:
-                return JSONResponse({'detail': 'Screenshot exceeds 2 MiB.' if upload else 'Request is too large. Maximum JSON size is 32 KiB.'}, status_code=413)
+                return JSONResponse({'detail': 'Screenshot exceeds 2 MiB.' if upload else 'Reply is too large. Attach at most three reviewed screenshots, each up to 2 MiB.' if reply else 'Request is too large. Maximum JSON size is 32 KiB.'}, status_code=413)
             body.extend(chunk)
         request._body = bytes(body)
     response = await call_next(request)

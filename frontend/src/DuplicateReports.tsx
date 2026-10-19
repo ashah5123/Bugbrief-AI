@@ -16,6 +16,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
 }) {
   const [data, setData] = useState<Result | null>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState("");
   const [employeeId, setEmployeeId] = useState("");
@@ -52,11 +53,11 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
   useEffect(() => {
     if (!data || group) return;
     let live = true;
-    setSelected(""); setCandidates([]);
+    setCandidatesLoading(true); setSelected(""); setCandidates([]);
     const timer = setTimeout(() => {
       api<Candidate[]>(`/feedback/${feedbackId}/duplicates/candidates?q=${encodeURIComponent(search)}`)
-        .then(value => { if (live) setCandidates(value); })
-        .catch(e => { if (live) setError(e.message); });
+        .then(value => { if (live) { setCandidates(value); setCandidatesLoading(false); } })
+        .catch(e => { if (live) { setError(e.message); setCandidatesLoading(false); } });
     }, 200);
     return () => { live = false; clearTimeout(timer); };
   }, [feedbackId, search, !!data, !!group, reloadKey]);
@@ -64,6 +65,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
     setBusy(true); setError(""); setNotice("");
     try {
       const value = await api<Result>(`/feedback/${feedbackId}/duplicates${path}`, method, payload);
+      if (!value.group) { setCandidatesLoading(true); setSelected(""); }
       setData(value);
       void api<IssueWorkflow>(`/feedback/${feedbackId}/workflow`).then(onWorkflow).catch(() => {});
       // Refresh list badges and other affected report snapshots through the normal authorized refresh.
@@ -95,16 +97,16 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
       if (value) setNotice("Report linked. Manage the shared fix from the main report.");
     }}>
       <label>Find the main report
-        <input aria-label="Find the main report" type="search" maxLength={120} value={search} disabled={busy} onChange={event => setSearch(event.target.value)} placeholder="Search title, feedback or report ID" />
+        <input aria-label="Find the main report" type="search" maxLength={120} value={search} disabled={busy} onChange={event => { setCandidatesLoading(true); setSelected(""); setSearch(event.target.value); }} placeholder="Search title, feedback or report ID" />
       </label>
       <label>Main report
-        <select aria-label="Main report" value={selected} disabled={busy} onChange={event => setSelected(event.target.value)}>
+        <select aria-label="Main report" value={selected} disabled={busy || candidatesLoading} onChange={event => setSelected(event.target.value)}>
           <option value="">Choose a report in this project</option>
           {candidates.map(candidate => <option key={candidate.id} value={candidate.id}>BB-{candidate.reference} · {candidate.title}</option>)}
         </select>
       </label>
       <small>Showing up to 50 matches. Search to find an older report. Reports already linked as duplicates cannot be selected as a main report.</small>
-      <button className="secondary-button" disabled={busy || !selected}>Link as duplicate</button>
+      <button className="secondary-button" disabled={busy || candidatesLoading || !selected}>Link as duplicate</button>
     </form>}
     {group && <>
       <div className="shared-issue-heading"><strong>{group.members.length} linked reports</strong><span>Shared fix: {openCount ? workflowLabels[group.work_status] : "All reports resolved"}</span></div>
@@ -162,7 +164,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
     {notice && <p className="shared-notice" role="status">{notice}</p>}
     {error && <div className="alert error" role="alert">{error}
       <button type="button" className="text-button" disabled={busy} onClick={async () => {
-        setBusy(true);
+        setBusy(true); setCandidatesLoading(true); setSelected("");
         try { await load(); setReloadKey(value => value + 1); setError(""); } catch (e) { setError((e as Error).message); }
         finally { setBusy(false); }
       }}>Reload linked reports</button>

@@ -16,7 +16,7 @@ import {
   Trash2,
 } from "lucide-react";
 import ScreenshotReview from "./ScreenshotReview";
-import { api, type IssueWorkflow } from "./types";
+import { api, ApiError, type IssueWorkflow } from "./types";
 import { activateCustomer, browserStorage } from "./browserStorage";
 import NotificationBell from "./NotificationBell";
 import Conversation from "./Conversation";
@@ -193,19 +193,35 @@ export default function CustomerIntake({
         } catch {}
         if (saved?.nonce) nonce.current = saved.nonce;
         if (saved?.answers) setAnswers(saved.answers);
+        let restored = false;
         if (resumeToken || saved?.access_token) {
-          const value = await api<Record>(
-            `/public/submissions/${resumeToken || saved.access_token}`,
-          );
-          if (cancelled) return;
-          adopt(value, true);
-          if (value.stage !== "submitted" && saved) {
-            setText(saved.text ?? value.text);
-            setPageUrl(saved.page_url ?? value.page_url);
-            setName(saved.name ?? value.reporter_name);
-            if (saved.step) setStep(saved.step);
+          let value: Record | null = null;
+          try {
+            value = await api<Record>(`/public/submissions/${resumeToken || saved.access_token}`);
+          } catch (error) {
+            if (cancelled) return;
+            if (!resumeToken && intakeToken && error instanceof ApiError && [404, 410].includes(error.status)) {
+              // A removed report must not trap the reusable project form in its old draft.
+              forgetSubmission(saved.access_token);
+              browserStorage.removeItem(storageKey);
+              nonce.current = crypto.randomUUID();
+              saved = null;
+              setAnswers({});
+            } else throw error;
           }
-        } else if (intakeToken) {
+          if (cancelled) return;
+          if (value) {
+            restored = true;
+            adopt(value, true);
+            if (value.stage !== "submitted" && saved) {
+              setText(saved.text ?? value.text);
+              setPageUrl(saved.page_url ?? value.page_url);
+              setName(saved.name ?? value.reporter_name);
+              if (saved.step) setStep(saved.step);
+            }
+          }
+        }
+        if (!restored && intakeToken) {
           const value = await api<Config>(`/public/intake/${intakeToken}`);
           if (cancelled) return;
           setConfig(value);

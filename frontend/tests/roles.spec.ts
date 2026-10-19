@@ -151,8 +151,13 @@ test("customer manages and deletes only their saved report with confirmation", a
   await expect(
     page.getByRole("heading", { name: "This feedback link is unavailable." }),
   ).toBeVisible();
+  // A stale cache can remain after deletion in another tab or a late read; the project form must recover.
+  await page.evaluate(({ intake, removed }) => {
+    localStorage.setItem(`bugbrief-customer-${intake}`, JSON.stringify({ access_token: removed, nonce: crypto.randomUUID(), text: "Old deleted report text", answers: { old: "Deleted details" } }));
+  }, { intake: link.token, removed: token });
   // A fresh report after deletion gets a new identity and can also be deleted in-place.
   await page.goto(`http://127.0.0.1:15173/c/${link.token}`);
+  await expect(page.getByRole("textbox", { name: /What went wrong/ })).toHaveValue("");
   await page
     .getByRole("textbox", { name: /What went wrong/ })
     .fill("A new, separate draft.");

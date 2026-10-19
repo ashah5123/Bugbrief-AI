@@ -6148,3 +6148,26 @@ code {
   .shared-work-actions { flex-direction: column; }
   .shared-work-actions button { width: 100%; }
 }
+
+/* Reviewed screenshots stay alongside their own conversation message. */
+.report-message > .reply-images { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 12px 0; }
+.reply-images figure { margin: 0; min-width: 0; background: #fff; border: 1px solid #dfe6d7; border-radius: 9px; overflow: hidden; }
+.reply-images a { display: block; }
+.reply-images img { display: block; width: 100%; height: 170px; object-fit: contain; background: #f0f2eb; }
+.reply-images figcaption { display: grid; gap: 5px; padding: 10px; font-size: 11px; overflow-wrap: anywhere; }
+.reply-images figcaption strong { color: #405b39; font-size: 12px; }
+.reply-images figcaption span { color: #7a856e; }
+.pending-reply-images { display: grid; gap: 10px; }
+.pending-reply-image { display: grid; grid-template-columns: 90px minmax(0, 1fr) 30px; align-items: start; gap: 12px; padding: 12px; background: #f6f8f2; border: 1px solid #dfe6d7; border-radius: 9px; }
+.pending-reply-image img { width: 90px; height: 75px; object-fit: contain; }
+.pending-reply-image label { min-width: 0; }
+.pending-reply-image input { width: 100%; }
+.reply-screenshot-review { padding: 12px; border: 1px solid #dfe6d7; border-radius: 9px; }
+.conversation-card form > .secondary-button { justify-self: start; }
+@media (max-width: 640px) {
+  .pending-reply-image { grid-template-columns: minmax(0, 1fr) 30px; }
+  .pending-reply-image img { width: 100%; height: 110px; grid-column: 1; }
+  .pending-reply-image label { grid-column: 1; }
+  .pending-reply-image button { grid-column: 2; grid-row: 1; }
+  .report-message > .reply-images { grid-template-columns: 1fr; }
+}

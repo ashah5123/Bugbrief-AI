@@ -13,10 +13,12 @@ export const MAX_SCREENSHOT_BYTES = 2 * 1024 * 1024;
 type Rect = { x: number; y: number; width: number; height: number };
 export default function ScreenshotReview({
   busy,
+  mode = "evidence",
   onSave,
   onError,
 }: {
   busy: boolean;
+  mode?: "evidence" | "reply";
   onSave: (blob: Blob, name: string) => Promise<void>;
   onError: (message: string) => void;
 }) {
@@ -173,12 +175,13 @@ export default function ScreenshotReview({
         className="visually-hidden"
         type="file"
         accept="image/png,image/jpeg"
-        aria-label="Choose screenshot"
+        aria-label={mode === "reply" ? "Choose reply screenshot" : "Choose screenshot"}
         onChange={(event) => choose(event.target.files?.[0])}
         disabled={busy || saving}
       />
       {!file ? (
         <button
+          type="button"
           className="upload-screenshot"
           disabled={busy}
           onClick={() => input.current?.click()}
@@ -189,7 +192,7 @@ export default function ScreenshotReview({
           <span>
             <strong>Add a screenshot</strong>
             <small>
-              Review and redact before saving · PNG / JPEG · 2 MiB max
+              {mode === "reply" ? "Review and redact before attaching · PNG / JPEG · 2 MiB max" : "Review and redact before saving · PNG / JPEG · 2 MiB max"}
             </small>
           </span>
           <span className="upload-plus">+</span>
@@ -202,6 +205,7 @@ export default function ScreenshotReview({
               <strong>Review before you share</strong>
             </div>
             <button
+          type="button"
               className="icon-button"
               aria-label="Discard screenshot preview"
               disabled={saving || busy}
@@ -212,7 +216,7 @@ export default function ScreenshotReview({
           </div>
           <p className="evidence-copy">
             Drag over sensitive details to cover them with opaque rectangles.
-            The original stays in this tab; only your reviewed version is saved.
+            {mode === "reply" ? "The original stays in this tab; only your reviewed version can be attached to the reply." : "The original stays in this tab; only your reviewed version is saved."}
           </p>
           <div className="redaction-canvas-wrap">
             <canvas
@@ -262,6 +266,7 @@ export default function ScreenshotReview({
               {dimensions.width} × {dimensions.height}
             </span>
             <button
+          type="button"
               className="text-button"
               disabled={!rects.length || saving || busy}
               onClick={() => {
@@ -273,6 +278,7 @@ export default function ScreenshotReview({
               Undo
             </button>
             <button
+          type="button"
               className="text-button"
               disabled={!rects.length || saving || busy}
               onClick={() => {
@@ -313,6 +319,7 @@ export default function ScreenshotReview({
               ))}
             </div>
             <button
+          type="button"
               className="secondary-button"
               disabled={saving || busy}
               onClick={() => add(manual)}
@@ -328,19 +335,19 @@ export default function ScreenshotReview({
               onChange={(event) => setReviewed(event.target.checked)}
             />
             <span>
-              I reviewed this version and removed sensitive information. Save
-              this reviewed image locally.
+              {mode === "reply" ? "I reviewed this version and removed sensitive information. Attach this reviewed image to my reply." : "I reviewed this version and removed sensitive information. Save this reviewed image locally."}
             </span>
           </label>
           <div className="review-actions">
-            <span>Nothing is sent to the vision provider yet.</span>
+            <span>{mode === "reply" ? "Nothing is uploaded until you send the reply." : "Nothing is sent to the vision provider yet."}</span>
             <button
+          type="button"
               className="primary-button"
               disabled={!reviewed || busy || saving}
               onClick={save}
             >
               <Check size={15} />
-              {saving ? "Saving…" : "Save reviewed screenshot"}
+              {saving ? "Preparing…" : mode === "reply" ? "Attach reviewed screenshot" : "Save reviewed screenshot"}
             </button>
           </div>
           <p className="fine-print">

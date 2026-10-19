@@ -79,6 +79,14 @@ To embed the button on a website you control, set the project's website URL in t
 
 Starting work, marking ready to retest, or resolving requires an assigned employee. Direct New → Resolved transitions are rejected. Progress uses a separate version so stale updates cannot overwrite another employee’s work, and it does not consume hosted-processing quota. Employees manage progress; customers can confirm or reject the current ready-to-retest fix. Progress does not automatically modify application code. In-app notifications and optional email alerts now cover replies, progress updates and retest requests.
 
+## Screenshots in report replies
+
+In a sent report's **Conversation**, write your reply and choose **Add screenshots to reply**. Preview the image, cover sensitive details with opaque rectangles, confirm review, then **Attach reviewed screenshot**. Add an optional caption and use **Send reply** to submit the message and its reviewed images together. You can remove pending images or cancel a preview before sending. Each reply accepts up to three PNG/JPEG screenshots, 2 MiB and four megapixels per image. Unsent images remain in this tab and are lost on reload.
+
+Screenshots appear alongside the relevant reply and caption and can be opened at full size. Company replies support the same flow; **Private team note** keeps its images private to authorized company users. All image access follows the individual report's account/project permissions, including in shared duplicate groups. Existing conversations and screenshots are never copied to other linked reports.
+
+Reply screenshots are stored locally, do not automatically enter the original report evidence or generation process, and do not consume processing quota. Replies use request identifiers so retrying after a lost response does not create another message or image. A report has a bounded reply-image storage limit; text replies continue to work when that limit is reached. Deleting the report removes its reply screenshot files and metadata alongside the existing report contents.
+
 ## Duplicate reports and shared fixes
 
 Open an individual report and use **Linked reports** to find a main report in the same project, then choose **Link as duplicate**. Groups are flat and contain up to 50 reports; unlink before changing the main report or moving a linked report to another project. Company list cards identify shared issues and linked duplicates. Linking itself does not copy evidence, messages, assignments or status.
