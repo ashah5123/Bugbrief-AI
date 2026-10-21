@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(prefix='bugbrief-e2e-') as directory:
 from app.db import SessionLocal
 from app.models import CustomerAccount,EmployeeAccount,CustomerSession,EmployeeSession
 from app.customer_auth import password_hash
-import hashlib,base64,time
+import hashlib,base64,time,secrets
 with SessionLocal() as s:
     hashed=password_hash('Workflow test phrase 42!')
     identities=[
@@ -31,6 +31,8 @@ with SessionLocal() as s:
         (CustomerAccount,CustomerSession,'Pending mobile','pending-mobile@example.test',b'q'),
         (CustomerAccount,CustomerSession,'Search desktop','search-desktop@example.test',b'r'),
         (CustomerAccount,CustomerSession,'Search mobile','search-mobile@example.test',b's'),
+        (CustomerAccount,CustomerSession,'Reminder desktop','reminder-desktop@example.test',b't'),
+        (CustomerAccount,CustomerSession,'Reminder mobile','reminder-mobile@example.test',b'u'),
     ]
     for model,sessions,name,email,seed_byte in identities:
         account=model(name=name,email=email,password_hash=hashed)
@@ -61,6 +63,22 @@ with SessionLocal() as s:
             s.add(IssueEvent(feedback_id=feedback.id,label=label,visibility=visibility,note='',actor_name=None if number<5 else 'Fixture customer' if visibility=='customer' else 'Workspace owner' if visibility=='internal' else 'Fixture employee',actor_role=None if number<5 else 'customer' if visibility=='customer' else 'owner' if visibility=='internal' else 'employee',created_at='2026-01-01T00:00:00+00:00'))
         for number in range(215):
             s.add(ReportMessage(feedback_id=feedback.id,visibility='public' if number<205 else 'internal',author_role='company',author_name='Fixture team',body=('Public history ' if number<205 else 'Private history ')+str(number),created_at='2026-01-01T00:00:00+00:00'))
+    # Retest reminder fixtures have their own accounts and archived reports.
+    from datetime import datetime, timezone, timedelta
+    from app.models import IssueProgress
+    old=(datetime.now(timezone.utc)-timedelta(hours=96)).isoformat()
+    for viewport in ['desktop','mobile']:
+        account=s.query(CustomerAccount).filter_by(email='reminder-'+viewport+'@example.test').one()
+        project=Project(name='Reminder fixture '+viewport)
+        s.add(project);s.flush()
+        link=IntakeLink(project_id=project.id,token=secrets.token_urlsafe(32))
+        feedback=Feedback(project_id=project.id,text='Retest reminder fixture '+viewport,archived_at=now(),created_at=old)
+        s.add_all([link,feedback]);s.flush()
+        s.add(CustomerSubmission(link_id=link.id,feedback_id=feedback.id,account_id=account.id,access_token=secrets.token_urlsafe(32),
+            client_nonce='reminder-fixture-nonce-'+viewport,stage='submitted',submitted_at=old,archived_at=now()))
+        s.add(IssueProgress(feedback_id=feedback.id,status='ready_to_retest',version=1,retest_requested_at=old,
+            fix_details={'summary':'Checkout corrected.','location':'Staging build 42.','steps':'Open checkout and press Pay now.'}))
+        s.add(IssueEvent(feedback_id=feedback.id,label='Status changed to Ready to retest',note='Please test checkout.',created_at=now()))
     s.commit()
 """
     subprocess.run([sys.executable, '-c', seed], cwd=root/'backend', env=env, check=True)

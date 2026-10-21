@@ -6265,3 +6265,14 @@ code {
 .customer-search-count { font-size: 12px; color: #687b5b; margin: 12px 0; }
 .progress-timeline li > div { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .customer-report-filters { grid-template-columns: 1fr; } }
+
+.fix-details-fields { margin: 16px 0; padding: 14px; border: 1px solid var(--border); border-radius: 12px; min-width: 0; }
+.fix-details-fields legend { padding: 0 5px; font-weight: 600; }
+.fix-details-fields p { font-size: 13px; }
+.fix-details-fields label { display: grid; gap: 6px; margin-top: 12px; }
+.fix-details-summary { margin-bottom: 18px; }
+.fix-details-summary dl { display: grid; gap: 14px; }
+.fix-details-summary dt { font-weight: 600; font-size: 13px; }
+.fix-details-summary dd { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.reminder-toggle { display: flex !important; align-items: center; gap: 10px; }
+.reminder-toggle input { width: auto; }

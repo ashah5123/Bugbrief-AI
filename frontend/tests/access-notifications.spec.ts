@@ -261,7 +261,7 @@ test("owner scopes projects; employee and customer receive private, unread repor
     await employee.request.patch(base + `/api/feedback/${recordId}/workflow`, {
       data: {
         version: progress.version,
-        status: "ready_to_retest",
+        status: "ready_to_retest", fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." },
         assigned_employee_id: assignee.id,
         note: "Please try the fix.",
       },

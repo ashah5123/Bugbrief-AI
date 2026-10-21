@@ -113,6 +113,11 @@ test("company assigns and progresses a customer issue; customer sees owner, stat
       .getByLabel("Issue status", { exact: true })
       .selectOption(status);
     await panel.getByLabel(/Customer-visible update/).fill(note);
+    if (status === "ready_to_retest") {
+      await panel.getByLabel("What changed", { exact: true }).fill("Checkout handler corrected.");
+      await panel.getByLabel("Where the fix is available", { exact: true }).fill("Current test website.");
+      await panel.getByLabel("Steps to retest", { exact: true }).fill("Open checkout and press Pay now.");
+    }
     await panel
       .getByRole("button", { name: "Save progress", exact: true })
       .click();
@@ -231,7 +236,7 @@ test("progress updates preserve unsaved report edits and reject a stale save", a
       await request.patch(`${api}/feedback/${record.id}/workflow`, {
         data: {
           version: state.version,
-          status: "ready_to_retest",
+          status: "ready_to_retest", fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." },
           assigned_employee_id: employee.id,
           note: "Updated by another employee.",
         },

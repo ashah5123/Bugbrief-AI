@@ -39,7 +39,7 @@ Stop only BugBrief’s backend, preserve `backend/.env`, and back up `data/bugbr
 .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Restart the backend with the command below. The migration upgrades to `0017` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
+Restart the backend with the command below. The migration upgrades to `0018` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
 
 ## Run
 
@@ -73,7 +73,7 @@ To embed the button on a website you control, set the project's website URL in t
 
 1. Open a submitted customer issue or a company draft/report in the workspace. **Assignment & progress** is available even before a structured brief has been generated.
 2. Select an employee and set the issue status. The normal path is **New → In progress → Ready to retest → Resolved**. Use **Needs information** when the customer must supply more details; a public explanation is required. A resolved issue can be reopened into In progress.
-3. Add an optional **Customer-visible update** and save progress. Employee assignment and these updates are visible to the reporting customer; keep internal/private details out.
+3. Add an optional **Customer-visible update** and save progress. Before requesting a retest, complete **What changed**, **Where the fix is available** and **Steps to retest**. Employee assignment, instructions and these updates are visible to the reporting customer; keep internal/private details out.
 4. Customers sign in to see their reports’ current status and assigned employee. Opening a sent report shows the latest update and progress history. The dashboard and open tracking page refresh every 15 seconds and on tab focus. Guest return links also show progress using the existing access rules.
 5. Filter the company inbox by progress and assigned employee. **Open issues** counts unresolved issues. Brief draft/review status remains separate from issue progress, so editing or regenerating a report does not reopen or reset its issue.
 
@@ -94,6 +94,16 @@ Signed-in customers can use **Search your reports** to search the full original 
 Report progress history includes **Load older updates** in pages of 50, with the name and role responsible for new changes. Previously loaded pages remain available during ordinary refreshes. Historical entries without saved attribution show **Actor not recorded**. Customers see public progress and their own archive actions; employees see public progress and internal triage/company archive actions. Internal changes do not clear a customer's waiting-for-reply state. Viewers can read older history while report write controls remain disabled.
 
 Owners can open **Team → Project access → Project activity history** for new project/settings, collection-link and access changes, including employee role/deletion grants, membership removal/restoration and private invitation activation. This owner-only history records display names and changed setting labels without storing access codes or intake tokens. Earlier permission changes cannot be reconstructed from this migration.
+
+## Automatic reminders and retest instructions
+
+The owner can open **Team & account → Automatic reminders** to enable/disable reminders, set reply/retest thresholds (1–720 hours) and choose an IANA deadline timezone such as `America/Phoenix`. Defaults are enabled, 24 hours awaiting a company response, 48 hours awaiting customer retest and UTC deadline boundaries. Settings reject stale saves and offer an explicit reload.
+
+Reply reminders go to the assigned employee, or the owner when unassigned. Reports past their due date alert the owner. Retest reminders go to the reporting customer's account. Alerts appear in the existing notification bell, with email only through the recipient's existing opt-in settings; owner-code sessions have in-app alerts only. Local email mode keeps alerts in the test outbox. Guest reports do not receive account/email retest reminders.
+
+Each recipient receives one reminder per waiting episode or overdue date, even across restarts and after marking an alert read. New customer input, a new retest request or a changed overdue date can create a new reminder. Completing the action stops further reminders for that episode; pending outgoing emails recheck current state, permissions and preferences. Resolved, deleted and unsent reports are excluded. Archives remain independent list state and do not stop reminders. Checks run on startup and every 30 seconds while the single backend worker is running; overdue work catches up after downtime. Deadline alerts use the configured timezone, while existing inbox calendar counts use the viewer's local timezone.
+
+New individual and shared retest requests require all three customer-visible fix details. Customers see the instructions directly above their confirmation controls, and confirmed fixes keep their latest instructions. Reopening or rejecting a fix clears them before a new request. Shared requests copy the new instructions only to open affected reports; resolved reports keep their existing fix and result. Stale progress saves, shared-action retries and customer confirmations retain their existing version checks. Historical ready-to-retest reports remain readable without invented details, but requesting another retest requires completed instructions.
 
 ## Employee permissions
 

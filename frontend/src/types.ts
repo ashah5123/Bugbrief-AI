@@ -70,6 +70,8 @@ export type CustomerMetadata = {
 export type IssueEmployee = { id: string; name: string; project_ids: string[] };
 export type IssuePriority = 'low' | 'normal' | 'high' | 'urgent';
 export type IssueWorkflow = {
+  fix_details?: import("./FixDetails").FixDetails | null;
+  retest_requested_at?: string | null;
   priority?: IssuePriority;
   due_date?: string | null;
   waiting_since?: string | null;

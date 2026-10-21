@@ -1,4 +1,5 @@
 import ActivityTimeline from "./ActivityTimeline";
+import { FixFields, FixSummary, emptyFix, completeFix } from "./FixDetails";
 import DuplicateReports from "./DuplicateReports";
 import NextStep from "./NextStep";
 import TriagePanel from "./TriagePanel";
@@ -91,6 +92,7 @@ export function CustomerProgress({
             : "Waiting for an employee to be assigned"}
         </span>
       </div>
+      {['ready_to_retest', 'resolved'].includes(workflow.status) && <FixSummary value={workflow.fix_details} />}
       {token && workflow.status === "ready_to_retest" && (
         <div className="retest-card">
           <h3>Did the fix work?</h3>
@@ -162,6 +164,8 @@ export default function WorkflowPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [fix, setFix] = useState(workflow.fix_details || emptyFix);
+  const [fixEdited, setFixEdited] = useState(false);
   useEffect(() => {
     if (dirty.current && workflow.version !== baseVersion) {
       setError(
@@ -172,11 +176,13 @@ export default function WorkflowPanel({
     setStatus(workflow.status);
     setEmployeeId(workflow.assigned_employee_id || "");
     setBaseVersion(workflow.version);
+    if (!fixEdited) setFix(workflow.fix_details || emptyFix);
   }, [feedbackId, workflow.version]);
   const changed =
     status !== workflow.status ||
     employeeId !== (workflow.assigned_employee_id || "") ||
-    !!note.trim();
+    !!note.trim() || fixEdited;
+  const needsFix = status === "ready_to_retest" && (workflow.status !== status || fixEdited || !!note.trim());
   return (
     <>
       <NextStep workflow={workflow} audience="company" hasCustomer={hasCustomer} />
@@ -209,12 +215,14 @@ export default function WorkflowPanel({
                   status,
                   assigned_employee_id: employeeId || null,
                   note,
+                  ...(needsFix ? { fix_details: fix } : {}),
                 },
               );
               dirty.current = false;
               setBaseVersion(value.version);
               onChange(value);
               setNote("");
+              setFixEdited(false);
               setSaved(true);
             } catch (e) {
               setError((e as Error).message);
@@ -299,6 +307,7 @@ export default function WorkflowPanel({
             This update and assignment are visible to the customer. Keep
             internal notes and private details out.
           </small>
+          {status === "ready_to_retest" && <><FixFields value={fix} disabled={busy} onChange={value => { dirty.current = true; setFix(value); setFixEdited(true); setSaved(false); }} /><small>Complete all three details before requesting a retest. These instructions are visible to the customer.</small></>}
           {error && (
             <div className="alert error" role="alert">
               {error}
@@ -312,7 +321,7 @@ export default function WorkflowPanel({
                     const value = await api<IssueWorkflow>(
                       `/feedback/${feedbackId}/workflow`,
                     );
-                    dirty.current = !!note.trim();
+                    dirty.current = !!note.trim() || fixEdited;
                     setBaseVersion(value.version);
                     onChange(value);
                     setStatus(value.status);
@@ -336,7 +345,7 @@ export default function WorkflowPanel({
                 Progress saved
               </span>
             )}
-            <button className="primary-button" disabled={busy || !changed}>
+            <button className="primary-button" disabled={busy || !changed || (needsFix && !completeFix(fix))}>
               {busy ? (
                 <LoaderCircle size={15} className="spin" />
               ) : (

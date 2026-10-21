@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Feedback, type IssueEmployee, type IssueWorkflow } from "./types";
 import { WorkflowBadge, workflowLabels } from "./WorkflowPanel";
+import { FixFields, emptyFix, completeFix } from "./FixDetails";
 
 type Member = { id: string; reference: string; title: string; workflow: IssueWorkflow };
 type Group = { main_feedback_id: string; version: number; work_status: string; assigned_employee_id: string | null; members: Member[] };
@@ -21,6 +22,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
   const [selected, setSelected] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [note, setNote] = useState("");
+  const [fix, setFix] = useState(emptyFix);
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -130,11 +132,13 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
             <textarea aria-label="Shared customer update" maxLength={1000} rows={3} value={note} disabled={busy} onChange={event => setNote(event.target.value)} placeholder="What are you working on? For a retest, explain what changed and the steps to try." />
           </label>
           <small>This text is public on every affected open report. Keep customer names and private details out.</small>
+          <FixFields value={fix} disabled={busy} prefix="Shared: " onChange={setFix} />
+          <small>All three fix details are required for a shared retest. Each affected customer receives the same instructions.</small>
           <div className="shared-work-actions">
             {([['in_progress', 'Start shared work'], ['ready_to_retest', 'Request shared retest']] as const).map(([status, label]) => <button key={status} type="button" className="secondary-button"
-              disabled={busy || !employeeId || !note.trim() || !openCount || (status === 'ready_to_retest' && !['in_progress','ready_to_retest'].includes(group.work_status) && !['in_progress','ready_to_retest'].includes(root?.workflow.status || ''))}
+              disabled={busy || !employeeId || !note.trim() || !openCount || (status === 'ready_to_retest' && (!completeFix(fix) || (!['in_progress','ready_to_retest'].includes(group.work_status) && !['in_progress','ready_to_retest'].includes(root?.workflow.status || ''))))}
               onClick={async () => {
-                const value = await sharedAction("/workflow", { version: group.version, report_versions: Object.fromEntries(group.members.map(member => [member.id, member.workflow.version])), status, assigned_employee_id: employeeId, note });
+                const value = await sharedAction("/workflow", { version: group.version, report_versions: Object.fromEntries(group.members.map(member => [member.id, member.workflow.version])), status, assigned_employee_id: employeeId, note, ...(status === 'ready_to_retest' ? { fix_details: fix } : {}) });
                 if (value) { ownerEdited.current = false; setNotice(`Updated ${value.updated_count} open reports.${status === 'ready_to_retest' ? ' Customers can now test independently.' : ''}`); setNote(""); }
               }}>{label}</button>)}
           </div>

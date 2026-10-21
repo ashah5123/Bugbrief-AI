@@ -14,6 +14,7 @@ from .models import (Feedback, CustomerSubmission, EmployeeAccount, EmployeeProj
 from .schemas import StrictModel
 from .workflow import visible_feedback, progress_snapshot, received_at, LABELS
 from .activity import actor_details
+from .fix_details import FixDetails, retest_values
 from .notifications import emit, add_alert, deliver_pending
 from .employee_auth import current_employee
 from .customer_auth import throttle
@@ -194,6 +195,7 @@ class SharedWorkflow(SharedAction):
     status: Literal['in_progress', 'ready_to_retest']
     assigned_employee_id: str = Field(min_length=1, max_length=100)
     note: str = Field(min_length=1, max_length=1000)
+    fix_details: FixDetails | None = None
     _nonblank = field_validator('note')(SharedMessage.nonblank.__func__)
 
 
@@ -202,7 +204,11 @@ def action_context(db, feedback_id, data, kind):
     group = group_for(db, feedback_id)
     if not group or group.main_feedback_id != feedback_id:
         raise HTTPException(409, 'Open the main report to manage this shared issue.')
-    fingerprint = hashlib.sha256(json.dumps({'kind': kind, 'data': data.model_dump(mode='json')}, sort_keys=True).encode()).hexdigest()
+    payload = data.model_dump(mode='json')
+    # Keep pre-upgrade retry receipts valid when no fix-details field was supplied.
+    if payload.get('fix_details') is None:
+        payload.pop('fix_details', None)
+    fingerprint = hashlib.sha256(json.dumps({'kind': kind, 'data': payload}, sort_keys=True).encode()).hexdigest()
     receipt = db.get(DuplicateAction, str(data.request_id))
     if receipt:
         if receipt.group_id != group.id or receipt.fingerprint != fingerprint:
@@ -244,6 +250,10 @@ async def shared_workflow(feedback_id: str, data: SharedWorkflow, request: Reque
     feedback, group, fingerprint, previous_count = action_context(db, feedback_id, data, 'workflow')
     if previous_count is not None:
         return {**snapshot(db, feedback_id), 'updated_count': previous_count}
+    if data.status == 'ready_to_retest' and data.fix_details is None:
+        raise HTTPException(422, 'Complete all three customer-visible fix details before requesting a shared retest.')
+    if data.status != 'ready_to_retest' and data.fix_details is not None:
+        raise HTTPException(422, 'Fix details belong to a ready-to-retest request.')
     rows = members(db, group)
     if set(data.report_versions) != {row.id for row in rows}:
         raise conflict()
@@ -267,6 +277,7 @@ async def shared_workflow(feedback_id: str, data: SharedWorkflow, request: Reque
                 continue
             previous_employee = current.assigned_employee_id if current else None
             values = dict(status=data.status, assigned_employee_id=employee.id, version=version + 1, updated_at=stamp)
+            values.update(retest_values(data.status, current.status if current else 'new', data.fix_details, stamp))
             if current:
                 changed = db.execute(update(IssueProgress).where(IssueProgress.feedback_id == row.id,
                     IssueProgress.version == version).values(**values))

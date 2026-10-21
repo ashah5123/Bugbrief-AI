@@ -21,6 +21,7 @@ def shared(client, fid, employee, status='in_progress', note='We are working on 
     current = group(client, fid)
     data = {'version': current['version'], 'request_id': str(uuid4()), 'status': status,
             'assigned_employee_id': employee, 'note': note,
+            **({'fix_details': {'summary':'Checkout corrected.', 'location':'Test website.', 'steps':'Repeat checkout.'}} if status == 'ready_to_retest' else {}),
             'report_versions': {row['id']: row['workflow']['version'] for row in current['members']}, **overrides}
     return client.post(f'/api/feedback/{fid}/duplicates/workflow', json=data)
 
@@ -141,6 +142,7 @@ def test_shared_work_and_retest_preserve_priority_and_individual_confirmations(c
     assert shared(client, main, employee).status_code == 200
     current = group(client, main)
     payload = {'version':current['version'],'request_id':str(uuid4()),'assigned_employee_id':employee,'status':'ready_to_retest',
+        'fix_details': {'summary':'Checkout corrected.', 'location':'Test website.', 'steps':'Repeat checkout.'},
         'note':'We fixed checkout. Repeat the original payment steps.', 'report_versions':{row['id']:row['workflow']['version'] for row in current['members']}}
     for _ in range(2):
         assert client.post(f'/api/feedback/{main}/duplicates/workflow', json=payload).status_code == 200

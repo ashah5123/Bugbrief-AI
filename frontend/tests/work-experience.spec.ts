@@ -10,6 +10,7 @@ async function progress(request: APIRequestContext, id: string, employee: string
   const current = await (await request.get(`${api}/feedback/${id}/workflow`)).json();
   const response = await request.patch(`${api}/feedback/${id}/workflow`, { data: {
     version: current.version, status, assigned_employee_id: employee,
+    ...(status === "ready_to_retest" ? { fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." }, } : {}),
     note: status === "needs_information" ? "Which browser did you use?" : "",
   } });
   expect(response.ok()).toBe(true);

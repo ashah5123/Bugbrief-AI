@@ -154,6 +154,8 @@ class EmployeeSession(Base):
 
 class IssueProgress(Base):
     __tablename__ = 'issue_progress'
+    fix_details: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    retest_requested_at: Mapped[str | None] = mapped_column(String, nullable=True)
     priority: Mapped[str] = mapped_column(String, default='normal', server_default='normal')
     due_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
     feedback_id: Mapped[str] = mapped_column(ForeignKey('feedback.id'), primary_key=True)
@@ -240,6 +242,8 @@ class NotificationPreference(Base):
 
 class Notification(Base):
     __tablename__ = 'notifications'
+    reminder_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    reminder_episode: Mapped[str | None] = mapped_column(String, nullable=True)
     id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
     scope: Mapped[str] = mapped_column(String, index=True)
     account_id: Mapped[str] = mapped_column(String, index=True)
@@ -248,6 +252,16 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(200))
     created_at: Mapped[str] = mapped_column(String, default=now)
     read_at: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ReminderPolicy(Base):
+    __tablename__ = 'reminder_policy'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+    reply_hours: Mapped[int] = mapped_column(Integer, default=24)
+    retest_hours: Mapped[int] = mapped_column(Integer, default=48)
+    timezone: Mapped[str] = mapped_column(String(100), default='UTC')
+    version: Mapped[int] = mapped_column(Integer, default=1)
 
 
 class OwnerSession(Base):

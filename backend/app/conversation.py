@@ -120,9 +120,11 @@ def retest(token: str, data: RetestInput, request: Request, background_tasks: Ba
     if data.outcome == 'still_happening' and not note:
         raise HTTPException(422, 'Tell the team what is still happening.')
     status = 'resolved' if data.outcome == 'works' else 'in_progress'
+    from .fix_details import retest_values
     changed = db.execute(update(IssueProgress).where(IssueProgress.feedback_id == item.feedback_id,
         IssueProgress.status == 'ready_to_retest', IssueProgress.version == data.version).values(
-            status=status, version=data.version+1, updated_at=now()))
+            status=status, version=data.version+1, updated_at=now(),
+            **retest_values(status, 'ready_to_retest', None, now())))
     if changed.rowcount != 1:
         raise HTTPException(409, 'The report changed. Reload it before confirming the fix.')
     db.add(IssueEvent(feedback_id=item.feedback_id,

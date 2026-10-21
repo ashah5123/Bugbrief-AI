@@ -109,7 +109,7 @@ test("customer replies, private notes and fix confirmation stay with the report"
     await request.patch(`/api/feedback/${feedback.id}/workflow`, {
       data: {
         version: progress.version,
-        status: "ready_to_retest",
+        status: "ready_to_retest", fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." },
         assigned_employee_id: assigned.id,
         note: "Please try checkout again.",
       },
@@ -131,7 +131,7 @@ test("customer replies, private notes and fix confirmation stay with the report"
   await request.patch(`/api/feedback/${feedback.id}/workflow`, {
     data: {
       version: progress.version,
-      status: "ready_to_retest",
+      status: "ready_to_retest", fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." },
       assigned_employee_id: assigned.id,
       note: "Second fix ready.",
     },

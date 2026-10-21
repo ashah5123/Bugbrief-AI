@@ -43,6 +43,9 @@ test("one shared fix, separate customer conversations and independent retest res
     await panel.getByRole("button", { name: "Start shared work", exact: true }).click();
     await expect(panel.getByRole("status")).toContainText("Updated 2 open reports");
     await panel.getByLabel("Shared customer update", { exact: true }).fill("Checkout is fixed. Repeat your original payment steps, then confirm the result.");
+    await panel.getByLabel("Shared: What changed", { exact: true }).fill("Checkout handler corrected.");
+    await panel.getByLabel("Shared: Where the fix is available", { exact: true }).fill("Current test website.");
+    await panel.getByLabel("Shared: Steps to retest", { exact: true }).fill("Open checkout and press Pay now.");
     await panel.getByRole("button", { name: "Request shared retest", exact: true }).click();
     await expect(panel.getByRole("status")).toContainText("Customers can now test independently");
     const portals = await Promise.all(contexts.map(context => context.newPage()));
@@ -59,6 +62,9 @@ test("one shared fix, separate customer conversations and independent retest res
     await page.reload();
     await expect(panel).toContainText("1 resolved · 1 still open");
     await panel.getByLabel("Shared customer update", { exact: true }).fill("We corrected the remaining mobile issue. Please retry checkout.");
+    await panel.getByLabel("Shared: What changed", { exact: true }).fill("Checkout handler corrected.");
+    await panel.getByLabel("Shared: Where the fix is available", { exact: true }).fill("Current test website.");
+    await panel.getByLabel("Shared: Steps to retest", { exact: true }).fill("Open checkout and press Pay now.");
     await panel.getByRole("button", { name: "Request shared retest", exact: true }).click();
     await expect(panel.getByRole("status")).toContainText("Updated 1 open reports");
     await portals[0].reload();

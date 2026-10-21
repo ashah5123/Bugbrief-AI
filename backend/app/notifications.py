@@ -68,11 +68,11 @@ def visible_notifications(db, scope, account_id):
     return query
 
 
-def add_alert(db, feedback, scope, account_id, kind, title):
+def add_alert(db, feedback, scope, account_id, kind, title, **metadata):
     if not can_view(db, scope, account_id, feedback):
         return
     alert = Notification(scope=scope, account_id=account_id, feedback_id=feedback.id, kind=kind,
-                         title=title + ' · BB-' + feedback.id[:8].upper())
+                         title=title + ' · BB-' + feedback.id[:8].upper(), **metadata)
     db.add(alert)
     db.flush()
     preference = db.get(NotificationPreference, (scope, account_id))
@@ -143,7 +143,8 @@ def _deliver_pending(factory):
             feedback = db.get(Feedback, alert.feedback_id) if alert else None
             preference = db.get(NotificationPreference, (alert.scope, alert.account_id)) if alert else None
             account = db.get(CustomerAccount if alert and alert.scope == 'customer' else EmployeeAccount, alert.account_id) if alert and alert.scope != 'owner' else None
-            if not alert or not preference or not preference.email_enabled or not account or not account.email_verified_at or not can_view(db, alert.scope, alert.account_id, feedback):
+            from .reminders import reminder_is_current
+            if not alert or not preference or not preference.email_enabled or not account or not account.email_verified_at or not can_view(db, alert.scope, alert.account_id, feedback) or not reminder_is_current(db, alert, feedback):
                 mail.delivery, mail.body = 'cancelled', ''
             elif settings.mail_mode == 'local':
                 mail.delivery = 'local'

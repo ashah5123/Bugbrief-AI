@@ -26,7 +26,8 @@ def employee(client):
 
 def patch(client, feedback_id, version=0, status='new', employee=None, note=''):
     return client.patch(f'/api/feedback/{feedback_id}/workflow', json={
-        'version': version, 'status': status, 'assigned_employee_id': employee, 'note': note})
+        'version': version, 'status': status, 'assigned_employee_id': employee, 'note': note,
+        **({'fix_details': {'summary':'Checkout handler corrected.', 'location':'Test website, current version.', 'steps':'Open checkout and press Pay now.'}} if status == 'ready_to_retest' else {})})
 
 
 @pytest.fixture

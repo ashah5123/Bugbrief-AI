@@ -11,6 +11,7 @@ from .db import get_db
 from .models import Feedback, CustomerSubmission, EmployeeAccount, EmployeeProject, IssueProgress, IssueEvent, ReportMessage, now
 from .schemas import StrictModel
 from .activity import actor_details, history_page
+from .fix_details import FixDetails, retest_values
 
 router = APIRouter()
 LABELS = {'new': 'New', 'needs_information': 'Needs information', 'in_progress': 'In progress',
@@ -45,7 +46,7 @@ def waiting_since(db, feedback, status):
     company_update = db.scalar(select(func.max(IssueEvent.created_at)).where(
         IssueEvent.feedback_id == feedback.id,
         IssueEvent.visibility == 'public',
-        ~IssueEvent.label.in_(['Customer confirmed the fix', 'Customer says the issue is still happening']),
+        ~IssueEvent.label.in_(['Customer confirmed the fix', 'Customer says the issue is still happening', 'Assignment removed']),
         (IssueEvent.note != '') | IssueEvent.label.like('Status changed to %') |
         IssueEvent.label.like('Report reopened%')))
     responses = [v for v in (company_reply, company_update) if v]
@@ -57,6 +58,8 @@ def progress_snapshot(db, feedback, public=False, history=True):
     employee = db.get(EmployeeAccount, progress.assigned_employee_id) if progress and progress.assigned_employee_id else None
     status = progress.status if progress else 'new'
     value = {'status': status, 'label': LABELS[status],
+             'fix_details': progress.fix_details if progress else None,
+             'retest_requested_at': progress.retest_requested_at if progress else None,
              'assigned_to': {'name': employee.name} if employee else None,
              'updated_at': progress.updated_at if progress else received_at(db, feedback)}
     if public and status == 'ready_to_retest':
@@ -91,6 +94,7 @@ class ProgressUpdate(StrictModel):
     status: Literal['new', 'needs_information', 'in_progress', 'ready_to_retest', 'resolved']
     assigned_employee_id: str | None = Field(min_length=1, max_length=100)
     note: str = Field(default='', max_length=1000)
+    fix_details: FixDetails | None = None
 
 
 @router.get('/api/employees')
@@ -132,11 +136,14 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, request: Reque
     note = data.note.strip()
     if data.status == 'needs_information' and previous != data.status and not note:
         raise HTTPException(422, 'Tell the customer what information is needed in the public update.')
-    if previous == data.status and previous_employee == data.assigned_employee_id and not note:
+    if data.fix_details is not None and data.status != 'ready_to_retest':
+        raise HTTPException(422, 'Fix details belong to a ready-to-retest request.')
+    if previous == data.status and previous_employee == data.assigned_employee_id and not note and data.fix_details is None:
         return progress_snapshot(db, feedback)
     stamp = now()
     values = {'status': data.status, 'assigned_employee_id': data.assigned_employee_id,
               'version': version+1, 'updated_at': stamp}
+    values.update(retest_values(data.status, previous, data.fix_details, stamp, request_again=bool(note)))
     try:
         if current:
             changed = db.execute(update(IssueProgress).where(IssueProgress.feedback_id == feedback_id,
@@ -154,7 +161,7 @@ async def update_progress(feedback_id: str, data: ProgressUpdate, request: Reque
             parts.append('Assigned to ' + employee.name if employee else 'Assignment removed')
         db.add(IssueEvent(feedback_id=feedback_id, label=' · '.join(parts) or 'Update from the company', note=note, created_at=stamp, **actor_details(request, db)))
         from .notifications import emit, add_alert, deliver_pending
-        if data.status != previous or note:
+        if data.status != previous or note or data.fix_details is not None:
             emit(db, request, feedback, 'retest_requested' if data.status == 'ready_to_retest' else 'progress_update',
                  'A fix is ready to retest' if data.status == 'ready_to_retest' else 'Report progress updated', customer=True)
         if employee and previous_employee != employee.id:

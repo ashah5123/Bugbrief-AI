@@ -27,7 +27,7 @@ test("customer searches full descriptions, combines filters and searches archive
   await post(request, `/projects/${two.id}/members/employee`, { email: "workflow-employee@example.com" });
   const employee = (await (await request.get(api + "/employees")).json()).find((person: { name: string }) => person.name === "Workflow Employee");
   let state = await (await request.patch(`${api}/feedback/${retestRow.id}/workflow`, { data: { version: 0, status: "in_progress", assigned_employee_id: employee.id, note: "Investigating." } })).json();
-  expect((await request.patch(`${api}/feedback/${retestRow.id}/workflow`, { data: { version: state.version, status: "ready_to_retest", assigned_employee_id: employee.id, note: "Try again." } })).ok()).toBe(true);
+  expect((await request.patch(`${api}/feedback/${retestRow.id}/workflow`, { data: { version: state.version, status: "ready_to_retest", fix_details: { summary: "Checkout corrected.", location: "Test website, current version.", steps: "Open checkout and press Pay now." }, assigned_employee_id: employee.id, note: "Try again." } })).ok()).toBe(true);
   expect((await context.request.patch(`${api}/public/submissions/${archived.access_token}/archive`, { data: { archived: true } })).ok()).toBe(true);
   const page = await context.newPage(); await page.goto(base + "/customer");
   const search = page.getByRole("region", { name: "Find your reports", exact: true });

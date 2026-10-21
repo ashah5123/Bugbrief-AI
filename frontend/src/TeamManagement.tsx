@@ -1,4 +1,5 @@
 import ProjectAccess from "./ProjectAccess";
+import ReminderSettings from "./ReminderSettings";
 import NotificationBell from "./NotificationBell";
 import { useEffect, useState } from "react";
 import { api } from "./types";
@@ -185,6 +186,7 @@ export default function TeamManagement() {
               ))}
             </section>
             <ProjectAccess />
+            <ReminderSettings />
             <section className="conversation-card">
               <h2>Pending invitations</h2>
               {!team.invitations.length && <p>No pending invitations.</p>}

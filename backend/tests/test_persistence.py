@@ -618,3 +618,60 @@ with TestClient(app) as c:
     with sqlite3.connect(path) as db:
         assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
         assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+
+
+def test_reminder_upgrade_preserves_legacy_rows_and_receipts_survive_restart(tmp_path):
+    import sqlite3
+    root=Path(__file__).resolve().parents[2]
+    path=tmp_path/'reminders.db'
+    env={**os.environ,'DATABASE_URL':f'sqlite:///{path}','AGENCY_ACCESS_CODE':'reminder-restart-code'}
+    def migrate(target):
+        subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade',target],cwd=root,env=env,check=True,capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+    migrate('0017')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects(id,name,url,created_at,team_name,customer_access) VALUES ('p','Retained project','','2026-01-01T00:00:00+00:00','','link')")
+        db.execute("INSERT INTO feedback(id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Retained words','','','','draft',1,'2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')")
+        db.execute("INSERT INTO issue_progress(feedback_id,status,version,updated_at,priority,due_date) VALUES ('f','new',4,'2026-01-01T00:00:00+00:00','high','2026-01-01')")
+        db.execute("INSERT INTO notifications(id,scope,account_id,feedback_id,kind,title,created_at) VALUES ('old','owner','owner','f','progress_update','Original alert','2026-01-01T00:00:00+00:00')")
+        db.execute("INSERT INTO mail_messages(id,notification_id,recipient,subject,body,delivery,created_at) VALUES ('old-mail','old','test@example.test','Original subject','Retained body','local','2026-01-01T00:00:00+00:00')")
+    migrate('head')
+    process("""
+from app.db import SessionLocal
+from app.models import IssueProgress,Notification
+from app.reminders import run_reminders
+from sqlalchemy import select
+from fastapi.testclient import TestClient
+from app.main import app
+with SessionLocal() as db:
+    row=db.get(IssueProgress,'f')
+    assert row.version==4 and row.priority=='high' and row.fix_details is None
+    assert db.get(Notification,'old').title=='Original alert'
+    from app.models import MailMessage
+    assert db.get(MailMessage,'old-mail').body=='Retained body'
+    row.fix_details={'summary':'Saved fix','location':'Staging build 42','steps':'Repeat checkout'}
+    row.retest_requested_at='2026-01-02T00:00:00+00:00'
+    db.commit()
+run_reminders(SessionLocal)
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='reminder-restart-code'
+    policy=c.get('/api/team/reminders').json()
+    assert c.patch('/api/team/reminders',json={**policy,'reply_hours':36,'timezone':'America/Phoenix'}).status_code==200
+""")
+    process("""
+from app.db import SessionLocal
+from app.models import IssueProgress,Notification
+from app.reminders import run_reminders,policy_snapshot
+from sqlalchemy import select
+run_reminders(SessionLocal)
+with SessionLocal() as db:
+    assert db.get(IssueProgress,'f').fix_details['summary']=='Saved fix'
+    assert policy_snapshot(db)['reply_hours']==36
+    assert policy_snapshot(db)['timezone']=='America/Phoenix'
+    reminders=list(db.scalars(select(Notification).where(Notification.kind=='reminder_overdue')))
+    assert len(reminders)==1 and reminders[0].reminder_key
+""")
+    with sqlite3.connect(path) as db:
+        assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+        assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
