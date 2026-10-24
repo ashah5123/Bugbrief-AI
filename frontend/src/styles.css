@@ -6276,3 +6276,28 @@ code {
 .fix-details-summary dd { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .reminder-toggle { display: flex !important; align-items: center; gap: 10px; }
 .reminder-toggle input { width: auto; }
+
+.project-health { margin: 28px 0; }
+.project-health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; }
+.project-health-card { padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: white; min-width: 0; }
+.project-health-card h3 { margin: 0 0 14px; overflow-wrap: anywhere; }
+.project-health-counts { display: grid !important; gap: 6px; padding: 0 !important; }
+.project-health-counts button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 9px; border: 1px solid transparent; border-radius: 8px; text-align: left; background: #f8f9f6; color: inherit; }
+.project-health-counts button:hover, .project-health-counts button:focus-visible { border-color: var(--green); background: #f1f5eb; }
+.project-health-counts button strong { min-width: 24px; font-size: 19px; }
+.project-health-counts button span { flex: 1; }
+.project-health-counts small { margin-top: 6px; font-size: 11px; }
+.project-card > .project-health-counts { margin: 16px 0 15px; font-size: 12px; }
+.saved-views { margin: 18px 0; padding: 20px; border: 1px solid var(--border); background: white; border-radius: 14px; }
+.saved-views h3 { margin: 0 0 6px; }
+.saved-views > p { font-size: 13px; }
+.saved-view-open, .saved-view-save { display: flex; gap: 10px; align-items: end; margin: 12px 0; flex-wrap: wrap; }
+.saved-view-open label, .saved-view-save label { display: grid; gap: 6px; flex: 1 1 220px; min-width: 0; }
+.saved-views select, .saved-views input { width: 100%; min-width: 0; }
+.saved-views small { display: block; }
+.saved-view-delete { margin-top: 12px; }
+.saved-view-delete button { margin-right: 8px; }
+@media (max-width: 600px) {
+  .saved-view-open, .saved-view-save { align-items: stretch; flex-direction: column; }
+  .saved-view-open label, .saved-view-save label { flex-basis: auto; }
+}

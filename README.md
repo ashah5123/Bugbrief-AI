@@ -39,7 +39,7 @@ Stop only BugBrief’s backend, preserve `backend/.env`, and back up `data/bugbr
 .venv/bin/alembic -c backend/alembic.ini upgrade head
 ```
 
-Restart the backend with the command below. The migration upgrades to `0018` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
+Restart the backend with the command below. The migration upgrades to `0019` and preserves existing projects, original feedback, saved reports and usage records. An automatic pre-migration development backup was created for this workspace under `data/backups/`; migrations themselves do not create backups.
 
 ## Run
 
@@ -94,6 +94,16 @@ Signed-in customers can use **Search your reports** to search the full original 
 Report progress history includes **Load older updates** in pages of 50, with the name and role responsible for new changes. Previously loaded pages remain available during ordinary refreshes. Historical entries without saved attribution show **Actor not recorded**. Customers see public progress and their own archive actions; employees see public progress and internal triage/company archive actions. Internal changes do not clear a customer's waiting-for-reply state. Viewers can read older history while report write controls remain disabled.
 
 Owners can open **Team → Project access → Project activity history** for new project/settings, collection-link and access changes, including employee role/deletion grants, membership removal/restoration and private invitation activation. This owner-only history records display names and changed setting labels without storing access codes or intake tokens. Earlier permission changes cannot be reconstructed from this migration.
+
+## Project health and personal saved views
+
+**Overview → Project health** shows active open reports, overdue work, customers awaiting a response, fixes awaiting retest and unassigned open reports for each accessible project. The same counts appear on **Projects** cards. Click a count to open that project's exact queue with other filters cleared. Counts can overlap; archived reports are excluded, and resolved reports do not count as open/overdue/waiting/unassigned. Company-created drafts count as work before a brief is generated; unsent customer drafts remain invisible. Calendar dates follow the viewer's timezone, as in existing inbox filters. The overview shows its last successful refresh time and uses the existing focus/15-second refresh.
+
+Use the **Saved views** section above the inbox filters to name the current search, filters, sorting, report/feedback view and active/archive scope. **Save as new view** creates a personal shortcut; choose it and press **Open view** to restore it across browsers. Employees can use **Assigned to me** with other criteria such as Urgent priority. Views saved from Overview open the complete feedback queue rather than its five-row preview.
+
+**Update saved view** replaces the selected shortcut with your current filters and name. **Delete saved view** requires confirmation and keeps every report. Each company account can store up to 20 views; names are case-insensitively unique within that account. Owner-code sessions share the workspace-owner identity; named employees' views stay private, including from the owner. Viewers can manage their own shortcuts without gaining report-write permission. Customers do not use these company inbox views.
+
+Opening rechecks current access. A removed project, unavailable employee or deleted/inaccessible customer filter marks the view unavailable instead of broadening it to all reports. You can choose accessible filters and update it, delete it, or restore access through the normal owner workflow. Changes from another browser produce a conflict; reload saved views explicitly before retrying. Filters store their search text on the server, but never report contents or credentials automatically.
 
 ## Automatic reminders and retest instructions
 

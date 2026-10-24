@@ -254,6 +254,21 @@ class Notification(Base):
     read_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class SavedView(Base):
+    __tablename__ = 'saved_views'
+    __table_args__ = (UniqueConstraint('scope', 'account_id', 'name_key', name='uq_saved_view_name'),
+                      UniqueConstraint('scope', 'account_id', 'slot', name='uq_saved_view_slot'))
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=uid)
+    scope: Mapped[str] = mapped_column(String)
+    account_id: Mapped[str] = mapped_column(String)
+    slot: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(String(80))
+    name_key: Mapped[str] = mapped_column(String(240))
+    filters: Mapped[dict] = mapped_column(JSON)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[str] = mapped_column(String, default=now)
+
+
 class ReminderPolicy(Base):
     __tablename__ = 'reminder_policy'
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -675,3 +675,43 @@ with SessionLocal() as db:
     with sqlite3.connect(path) as db:
         assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
         assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+
+
+def test_saved_views_upgrade_preserves_reports_and_personal_filters_survive_restart(tmp_path):
+    import sqlite3
+    root=Path(__file__).resolve().parents[2]
+    path=tmp_path/'saved-views.db'
+    env={**os.environ,'DATABASE_URL':f'sqlite:///{path}','AGENCY_ACCESS_CODE':'saved-view-restart-code'}
+    def migrate(target):
+        subprocess.run([sys.executable,'-m','alembic','-c','backend/alembic.ini','upgrade',target],cwd=root,env=env,check=True,capture_output=True)
+    def process(code):
+        subprocess.run([sys.executable,'-c',code],cwd=root/'backend',env=env,check=True,capture_output=True)
+    migrate('0018')
+    with sqlite3.connect(path) as db:
+        db.execute("INSERT INTO projects(id,name,url,created_at,team_name,customer_access) VALUES ('p','Retained project','','2026-01-01T00:00:00+00:00','','link')")
+        db.execute("INSERT INTO feedback(id,project_id,text,page_url,device,browser,status,version,created_at,updated_at) VALUES ('f','p','Retained words','','','','draft',1,'2026-01-01T00:00:00+00:00','2026-01-01T00:00:00+00:00')")
+    migrate('head')
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='saved-view-restart-code'
+    assert c.get('/api/feedback/f').json()['text']=='Retained words'
+    assert c.get('/api/saved-views').json()==[]
+    assert c.post('/api/saved-views',json={'name':'Persistent queue','filters':{'project_id':'p','attention':'unassigned','archive':True,'sort':'newest','search':'words'}}).status_code==201
+""")
+    process("""
+from fastapi.testclient import TestClient
+from app.main import app
+with TestClient(app) as c:
+    c.headers['X-Agency-Key']='saved-view-restart-code'
+    row=c.get('/api/saved-views').json()[0]
+    assert row['name']=='Persistent queue' and row['filters']['project_id']=='p'
+    assert row['filters']['archive'] is True and row['filters']['sort']=='newest'
+    assert row['version']==1 and not row['unavailable']
+    assert c.request('DELETE','/api/saved-views/'+row['id'],json={'version':row['version']}).status_code==200
+    assert c.get('/api/feedback/f').json()['text']=='Retained words'
+""")
+    with sqlite3.connect(path) as db:
+        assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+        assert db.execute('PRAGMA foreign_key_check').fetchall()==[]

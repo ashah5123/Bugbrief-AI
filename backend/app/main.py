@@ -31,6 +31,7 @@ from .project_access import router as access_router, company_project_ids, requir
 from .employee_auth import current_employee
 from .models import EmployeeProject, EmployeeAccount, IssueProgress, IssueEvent
 from .notifications import router as notification_router, deliver_pending
+from .saved_views import router as saved_views_router
 from .reminders import router as reminder_router, run_reminders
 
 @asynccontextmanager
@@ -69,6 +70,7 @@ app.include_router(duplicates_router)
 app.include_router(account_management_router)
 app.include_router(access_router)
 app.include_router(notification_router)
+app.include_router(saved_views_router)
 app.include_router(reminder_router)
 app.include_router(archive_router)
 app.include_router(activity_router)

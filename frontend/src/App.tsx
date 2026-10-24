@@ -1,3 +1,6 @@
+import ProjectHealth, { ProjectHealthCounts } from "./ProjectHealth";
+import SavedViews from "./SavedViews";
+import { defaultFilters, matchesQueue, type QueueFilters } from "./queueFilters";
 import { DuplicateBadge } from "./DuplicateReports";
 import MyWork from "./MyWork";
 import NextStep from "./NextStep";
@@ -186,6 +189,7 @@ export default function App() {
   const [progressFilter, setProgressFilter] = useState("all");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [allItems, setItems] = useState<Feedback[]>([]);
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null);
   const items = allItems.filter(item => !item.archived_at);
   const [archiveView, setArchiveView] = useState(false);
   const permissions = (projectId: string) => projects.find(project => project.id === projectId)?.permissions;
@@ -279,6 +283,7 @@ export default function App() {
     setItems(f);
     setHealth(h);
     setEmployees(e);
+    setLastRefreshed(new Date().toISOString());
     for (const key of browserStorage.keys()) {
       if (
         key.startsWith("bugbrief-report-") &&
@@ -411,34 +416,27 @@ export default function App() {
   const hasFilters = !!search || statusFilter !== "all" || projectFilter !== "all" ||
     progressFilter !== "all" || assigneeFilter !== "all" || priorityFilter !== "all" ||
     customerFilter !== "all" || attentionFilter !== "all";
-  const customers = [...new Map(items.filter(item => item.customer).map(item => [customerKey(item), item.customer!.reporter_name || "Unnamed customer"])).entries()]
+  const customers = [...new Map(allItems.filter(item => item.customer).map(item => [customerKey(item), item.customer!.reporter_name || "Unnamed customer"])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   function resetFilters() {
     setSearch(""); setStatusFilter("all"); setProjectFilter("all");
     setProgressFilter("all"); setAssigneeFilter("all"); setPriorityFilter("all");
     setCustomerFilter("all"); setAttentionFilter("all");
   }
-  const filtered = allItems.filter(
-    (i) =>
-      !!i.archived_at === archiveView &&
-      (view !== "reports" || i.report) &&
-      (projectFilter === "all" || i.project_id === projectFilter) &&
-      (statusFilter === "all" || i.status === statusFilter) &&
-      (priorityFilter === "all" || (i.workflow.priority || "normal") === priorityFilter) &&
-      (customerFilter === "all" || customerKey(i) === customerFilter) &&
-      (attentionFilter === "all" ||
-        (attentionFilter === "overdue" && overdue(i.workflow, today)) ||
-        (attentionFilter === "waiting" && !!i.workflow.waiting_since) ||
-        (attentionFilter === "today" && i.workflow.status !== "resolved" && i.workflow.due_date === today)) &&
-      (progressFilter === "all" || i.workflow.status === progressFilter) &&
-      (assigneeFilter === "all" ||
-        (assigneeFilter === "unassigned"
-          ? !i.workflow.assigned_employee_id
-          : i.workflow.assigned_employee_id === assigneeFilter)) &&
-      `${i.id} ${i.text} ${i.report?.title || ""} ${i.customer?.reporter_name || ""} ${i.workflow.assigned_to?.name || ""} ${projects.find(p => p.id === i.project_id)?.name || ""}`
-        .toLowerCase()
-        .includes(search.trim().toLowerCase()),
-  ).sort((a, b) => compareTriage(a, b, sort, today));
+  const queueFilters: QueueFilters = { view: view === "reports" ? "reports" : "feedback", archive: archiveView, search, project_id: projectFilter,
+    status: statusFilter, progress: progressFilter, priority: priorityFilter, attention: attentionFilter,
+    assignee: assigneeFilter, customer: customerFilter, sort };
+  const filtered = allItems.filter(item => matchesQueue(item, queueFilters, today, projects, employee?.id))
+    .sort((a, b) => compareTriage(a, b, sort, today));
+  function applyQueue(value: QueueFilters) {
+    navigate(value.view);
+    setArchiveView(value.archive); setSearch(value.search); setProjectFilter(value.project_id);
+    setStatusFilter(value.status); setProgressFilter(value.progress); setPriorityFilter(value.priority);
+    setAttentionFilter(value.attention); setAssigneeFilter(value.assignee); setCustomerFilter(value.customer); setSort(value.sort);
+  }
+  function openProjectHealth(projectId: string, attention: string) {
+    applyQueue({ ...defaultFilters, project_id: projectId, attention });
+  }
   function navigate(next: View) {
     setView(next);
     setArchiveView(false);
@@ -945,6 +943,7 @@ export default function App() {
               </div>
             </>
           )}
+          {!loading && lastRefreshed && view === "overview" && <ProjectHealth projects={projects} items={allItems} today={today} updatedAt={lastRefreshed} open={openProjectHealth} />}
           {view !== "projects" && view !== "mywork" && <section className="triage-summary" aria-label="Reports needing attention">
             {([
               ["overdue", "Overdue reports", items.filter(item => overdue(item.workflow, today)).length],
@@ -1286,6 +1285,7 @@ export default function App() {
                       reports
                     </span>
                   </div>
+                  <ProjectHealthCounts project={p} items={allItems} today={today} open={openProjectHealth} />
                   <button
                     className="share-project-button"
                     onClick={() => share(p.id)}
@@ -1338,6 +1338,7 @@ export default function App() {
                   </button>
                 )}
               </div>
+              <SavedViews key={employee?.id || "owner"} filters={queueFilters} apply={applyQueue} />
               <div className="list-card">
                 <div className="list-toolbar">
                   <div className="filter-tabs">
@@ -1416,6 +1417,7 @@ export default function App() {
                     >
                       <option value="all">All employees</option>
                       <option value="unassigned">Unassigned</option>
+                      {employee && <option value="me">Assigned to me</option>}
                       {employees.map((employee) => (
                         <option key={employee.id} value={employee.id}>
                           {employee.name}
@@ -1440,6 +1442,7 @@ export default function App() {
                     <select aria-label="Filter by attention" value={attentionFilter} onChange={event => setAttentionFilter(event.target.value)}>
                       <option value="all">All reports</option><option value="overdue">Overdue</option>
                       <option value="today">Due today</option><option value="waiting">Customer awaiting reply</option>
+                      <option value="open">Open reports</option><option value="retest">Awaiting retest</option><option value="unassigned">Unassigned open reports</option>
                     </select>
                   </label>
                   <label>Sort
