@@ -13,7 +13,6 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
     path: `../test-results/${testInfo.project.name}-initial.png`,
     fullPage: true,
   });
-  const initialCount = await page.locator(".feedback-row").count();
   const initialTotal = (await (await page.request.get("/api/feedback")).json())
     .length;
   await page.locator(".agency-capture > summary").click();
@@ -38,9 +37,11 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Feedback saved");
   await page.reload();
+  await expect(page.locator(".agency-capture")).not.toHaveAttribute("open", "");
+  await page.getByRole("button", { name: "Continue your draft", exact: true }).click();
   await expect(page.getByLabel("Client feedback")).toHaveValue(text);
   await expect(page.locator(".feedback-row")).toHaveCount(
-    Math.min(initialCount + 1, 5),
+    initialTotal + 1,
   );
   await page.getByLabel("I’ve removed sensitive information").check();
   await page
@@ -50,10 +51,11 @@ test("real API: project, draft, reload, missing key and responsive navigation", 
   await expect(page.getByLabel("Client feedback")).toHaveValue(text);
   // Reloading and re-saving must update the same draft, not create a duplicate.
   await page.reload();
+  await page.getByRole("button", { name: "Continue your draft", exact: true }).click();
   await page.getByRole("button", { name: "Save draft", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Feedback saved");
   await expect(page.locator(".feedback-row")).toHaveCount(
-    Math.min(initialCount + 1, 5),
+    initialTotal + 1,
   );
   expect((await (await page.request.get("/api/feedback")).json()).length).toBe(
     initialTotal + 1,

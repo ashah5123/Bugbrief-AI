@@ -67,9 +67,12 @@ test('personal views restore filters across browsers and protect changed views f
   await page.getByLabel('Filter by project', { exact: true }).selectOption(project.id);
   await page.getByRole('button', { name: 'Archived reports', exact: true }).click();
   await page.getByLabel('Search feedback', { exact: true }).fill('Archived health');
+  await page.locator('.more-filters > summary').click();
   await page.getByLabel('Filter by priority', { exact: true }).selectOption('normal');
   await page.getByLabel('Sort reports', { exact: true }).selectOption('newest');
   const saved = page.getByRole('region', { name: 'Saved views', exact: true });
+  await expect(saved.getByLabel('View name', { exact: true })).toBeHidden();
+  await saved.locator('.saved-view-management > summary').click();
   const name = `Archived queue ${info.project.name}`;
   await saved.getByLabel('View name', { exact: true }).fill(name);
   await saved.getByRole('button', { name: 'Save as new view', exact: true }).click();
@@ -80,6 +83,9 @@ test('personal views restore filters across browsers and protect changed views f
   await saved.getByRole('button', { name: 'Open view', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Archived reports', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Sort reports', { exact: true })).toHaveValue('newest');
+  await expect(page.getByLabel('Sort reports', { exact: true })).toBeHidden();
+  await expect(page.getByRole('group', { name: 'Applied additional filters' })).toContainText('Newest first');
+  await saved.screenshot({ path: `../test-results/${info.project.name}-compact-saved-views.png` });
   await expect(page.locator('.feedback-row')).toHaveCount(1);
   await expect(page.locator(`[data-report-id="${archived.id}"]`)).toBeVisible();
   const fresh = await browser.newContext({ extraHTTPHeaders: { 'X-Agency-Key': 'e2e-agency-access-code' } });
@@ -93,7 +99,11 @@ test('personal views restore filters across browsers and protect changed views f
   } finally { await fresh.close(); }
   const latest = await (await request.get(`${api}/saved-views/${viewId}`)).json();
   expect((await request.patch(`${api}/saved-views/${viewId}`, { data: { name: name + ' renamed', filters: latest.filters, version: latest.version } })).ok()).toBe(true);
+  await saved.locator('.saved-view-management > summary').click();
   await saved.getByLabel('View name', { exact: true }).fill(name + ' local edit');
+  await saved.locator('.saved-view-management > summary').click();
+  await saved.locator('.saved-view-management > summary').click();
+  await expect(saved.getByLabel('View name', { exact: true })).toHaveValue(name + ' local edit');
   await saved.getByRole('button', { name: 'Update saved view', exact: true }).click();
   await expect(saved.getByRole('alert')).toContainText('Saved views changed');
   await expect(saved.getByLabel('View name', { exact: true })).toHaveValue(name + ' local edit');

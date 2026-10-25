@@ -36,7 +36,7 @@ export default function SavedViews({ filters, apply }: { filters: QueueFilters; 
   }
   const unavailable = selected && (rows.find(row => row.id === selected.id)?.unavailable ?? selected.unavailable);
   return <section className="saved-views" aria-label="Saved views">
-    <h3>Saved views</h3><p>Your personal inbox shortcuts, available across browsers. Up to 20 per account.</p>
+    <h3>Saved views</h3><p>Personal shortcuts, available across browsers.</p>
     <fieldset className="permission-controls" disabled={busy || loading}>
       <div className="saved-view-open"><label>Saved view<select aria-label="Saved view" value={selected?.id || ""} onChange={event => select(rows.find(row => row.id === event.target.value) || null)}>
         <option value="">Choose a saved view</option>{rows.map(row => <option key={row.id} value={row.id}>{row.name}{row.unavailable ? " · Unavailable" : ""}</option>)}
@@ -47,17 +47,19 @@ export default function SavedViews({ filters, apply }: { filters: QueueFilters; 
         apply(value.filters); setNotice(`Opened ${value.name}`);
       })}>Open view</button></div>
       {unavailable && <p className="permission-notice">This view uses a project, employee or customer no longer available. Choose accessible inbox filters and update it, or delete it.</p>}
+      <details className="saved-view-management"><summary>Manage saved views</summary>
       <form className="saved-view-save" onSubmit={event => { event.preventDefault(); void save(); }}>
         <label>View name<input aria-label="View name" required maxLength={80} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. My urgent reports" /></label>
         <button className="secondary-button" disabled={!name.trim() || filters.search.length > 200}>Save as new view</button>
         {selected && <button type="button" className="secondary-button" disabled={!name.trim() || filters.search.length > 200} onClick={() => void save(true)}>Update saved view</button>}
       </form>
-      <small>Saves current filters, search, sorting and active/archive scope. Updating replaces the selected view with your current filters.</small>
+      <small>Keep up to 20 views. Saves current filters, search, sorting and active/archive scope. Updating replaces the selected view with your current filters.</small>
       {filters.search.length > 200 && <p role="alert">Shorten the search to 200 characters before saving.</p>}
       {selected && (!confirmDelete ? <button type="button" className="text-button" onClick={() => setConfirmDelete(true)}>Delete saved view</button> : <div className="saved-view-delete"><p>Delete “{selected.name}”? Reports are kept.</p><button type="button" className="secondary-button" onClick={() => setConfirmDelete(false)}>Keep view</button><button type="button" className="secondary-button" onClick={() => void act(async () => {
         await api(`/saved-views/${selected.id}`, "DELETE", { version: selected.version });
         setRows(current => current.filter(row => row.id !== selected.id)); select(null); setNotice("Saved view deleted");
       })}>Confirm delete view</button></div>)}
+      </details>
     </fieldset>
     {notice && <p role="status">{notice}</p>}
     {error && <div role="alert" className="alert error">{error}<button type="button" className="text-button" disabled={busy} onClick={() => void act(async () => {

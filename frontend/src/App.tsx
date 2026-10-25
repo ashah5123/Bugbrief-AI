@@ -170,9 +170,8 @@ function Modal({
 export default function App() {
   const employee = useContext(EmployeeContext);
   const userInitial = employee?.name.slice(0, 1).toUpperCase() || "W";
-  const [manualOpen, setManualOpen] = useState(() =>
-    Boolean(browserStorage.getItem("bugbrief-active-id")),
-  );
+  const [manualOpen, setManualOpen] = useState(false);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [sharing, setSharing] = useState<string | null>(null);
   const [view, setView] = useState<View>(employee ? "mywork" : "overview");
   const [projects, setProjects] = useState<Project[]>([]);
@@ -415,14 +414,23 @@ export default function App() {
     health.usage.attempts < health.usage.limit;
   const hasFilters = !!search || statusFilter !== "all" || projectFilter !== "all" ||
     progressFilter !== "all" || assigneeFilter !== "all" || priorityFilter !== "all" ||
-    customerFilter !== "all" || attentionFilter !== "all";
+    customerFilter !== "all" || attentionFilter !== "all" || sort !== "triage";
   const customers = [...new Map(allItems.filter(item => item.customer).map(item => [customerKey(item), item.customer!.reporter_name || "Unnamed customer"])).entries()]
     .sort((a, b) => a[1].localeCompare(b[1]));
   function resetFilters() {
     setSearch(""); setStatusFilter("all"); setProjectFilter("all");
     setProgressFilter("all"); setAssigneeFilter("all"); setPriorityFilter("all");
-    setCustomerFilter("all"); setAttentionFilter("all");
+    setCustomerFilter("all"); setAttentionFilter("all"); setSort("triage");
   }
+  const advancedFilters = [
+    ...(statusFilter !== "all" ? [{ key: "brief", label: `Brief: ${statusFilter === "draft" ? "Draft" : "In review"}`, clear: () => setStatusFilter("all") }] : []),
+    ...(progressFilter !== "all" ? [{ key: "progress", label: `Progress: ${workflowLabels[progressFilter]}`, clear: () => setProgressFilter("all") }] : []),
+    ...(assigneeFilter !== "all" ? [{ key: "assignee", label: `Assigned: ${assigneeFilter === "me" ? "Me" : assigneeFilter === "unassigned" ? "Unassigned" : employees.find(person => person.id === assigneeFilter)?.name || "Unavailable employee"}`, clear: () => setAssigneeFilter("all") }] : []),
+    ...(customerFilter !== "all" ? [{ key: "customer", label: `Customer: ${customerFilter === "manual" ? "Manual intake" : customers.find(([value]) => value === customerFilter)?.[1] || "Unavailable customer"}`, clear: () => setCustomerFilter("all") }] : []),
+    ...(priorityFilter !== "all" ? [{ key: "priority", label: `Priority: ${priorityLabels[priorityFilter as keyof typeof priorityLabels]}`, clear: () => setPriorityFilter("all") }] : []),
+    ...(attentionFilter !== "all" ? [{ key: "attention", label: `Attention: ${{open:"Open reports", overdue:"Overdue", today:"Due today", waiting:"Customer awaiting reply", retest:"Awaiting retest", unassigned:"Unassigned open reports"}[attentionFilter]}`, clear: () => setAttentionFilter("all") }] : []),
+    ...(sort !== "triage" ? [{ key: "sort", label: `Sort: ${sort === "due" ? "Due date first" : "Newest first"}`, clear: () => setSort("triage") }] : []),
+  ];
   const queueFilters: QueueFilters = { view: view === "reports" ? "reports" : "feedback", archive: archiveView, search, project_id: projectFilter,
     status: statusFilter, progress: progressFilter, priority: priorityFilter, attention: attentionFilter,
     assignee: assigneeFilter, customer: customerFilter, sort };
@@ -438,6 +446,8 @@ export default function App() {
     applyQueue({ ...defaultFilters, project_id: projectId, attention });
   }
   function navigate(next: View) {
+    setManualOpen(false);
+    setMoreFiltersOpen(false);
     setView(next);
     setArchiveView(false);
     setMobileNav(false);
@@ -460,8 +470,8 @@ export default function App() {
     );
   }
   function newFeedback() {
-    setManualOpen(true);
     navigate("feedback");
+    setManualOpen(true);
     composer.current?.focus();
     setTimeout(() => composer.current?.focus(), 30);
   }
@@ -576,7 +586,7 @@ export default function App() {
       });
       setActiveId(item.id);
       setConsent(false);
-      navigate("feedback");
+      newFeedback();
     }
   }
   const openedAlert = useRef(false);
@@ -956,10 +966,11 @@ export default function App() {
               <strong>{count}</strong><span>{label}</span><ArrowRight size={16} />
             </button>)}
           </section>}
-          {(view === "overview" || view === "feedback") && (
+          {(view === "overview" || view === "feedback") && (<>
+            {!manualOpen && (draft.text.trim() || activeId) && <button type="button" className="secondary-button resume-company-draft" onClick={newFeedback}>Continue your draft <ArrowRight size={14} /></button>}
             <details
               className="agency-capture"
-              open={view === "feedback" || manualOpen}
+              open={manualOpen}
               onToggle={(event) => setManualOpen(event.currentTarget.open)}
             >
               <summary>
@@ -1253,7 +1264,7 @@ export default function App() {
                 </aside>
               </div>
             </details>
-          )}
+          </>)}
           {view === "projects" ? (
             <section className="projects-grid">
               {projects.map((p, i) => (
@@ -1341,29 +1352,6 @@ export default function App() {
               <SavedViews key={employee?.id || "owner"} filters={queueFilters} apply={applyQueue} />
               <div className="list-card">
                 <div className="list-toolbar">
-                  <div className="filter-tabs">
-                    <button
-                      className={statusFilter === "all" ? "selected" : ""}
-                      onClick={() => setStatusFilter("all")}
-                    >
-                      All {view === "reports" ? "reports" : "feedback"}
-                      <span>
-                        {archiveView ? allItems.filter(item => item.archived_at && (view !== "reports" || item.report)).length : view === "reports" ? reports.length : items.length}
-                      </span>
-                    </button>
-                    <button
-                      className={statusFilter === "draft" ? "selected" : ""}
-                      onClick={() => setStatusFilter("draft")}
-                    >
-                      Brief drafts
-                    </button>
-                    <button
-                      className={statusFilter === "review" ? "selected" : ""}
-                      onClick={() => setStatusFilter("review")}
-                    >
-                      Briefs in review
-                    </button>
-                  </div>
                   <div className="list-filters">
                     <div className="search-field">
                       <Search size={15} />
@@ -1388,6 +1376,31 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+                <details className="more-filters" open={moreFiltersOpen} onToggle={event => setMoreFiltersOpen(event.currentTarget.open)}>
+                  <summary>More filters{advancedFilters.length > 0 && <span className="count-badge">{advancedFilters.length} active</span>}<ChevronDown size={14} /></summary>
+                  <div className="filter-tabs">
+                    <button
+                      className={statusFilter === "all" ? "selected" : ""}
+                      onClick={() => setStatusFilter("all")}
+                    >
+                      All {view === "reports" ? "reports" : "feedback"}
+                      <span>
+                        {archiveView ? allItems.filter(item => item.archived_at && (view !== "reports" || item.report)).length : view === "reports" ? reports.length : items.length}
+                      </span>
+                    </button>
+                    <button
+                      className={statusFilter === "draft" ? "selected" : ""}
+                      onClick={() => setStatusFilter("draft")}
+                    >
+                      Brief drafts
+                    </button>
+                    <button
+                      className={statusFilter === "review" ? "selected" : ""}
+                      onClick={() => setStatusFilter("review")}
+                    >
+                      Briefs in review
+                    </button>
+                  </div>
                 <div className="workflow-filters">
                   <label>
                     Progress
@@ -1451,6 +1464,8 @@ export default function App() {
                     </select>
                   </label>
                 </div>
+                </details>
+                {advancedFilters.length > 0 && <div className="applied-filters" role="group" aria-label="Applied additional filters">{advancedFilters.map(filter => <button key={filter.key} type="button" className="applied-filter" aria-label={`Remove ${filter.key} filter`} onClick={filter.clear}>{filter.label}<X size={12} /></button>)}</div>}
                 <div className="filter-results" aria-live="polite">
                   <span>{filtered.length} {filtered.length === 1 ? "report" : "reports"} match{filtered.length === 1 ? "es" : ""}{view === "overview" && filtered.length > 5 ? " · Showing first 5" : ""}</span>
                   {hasFilters && filtered.length > 0 && <button className="text-button" onClick={resetFilters}>Clear filters</button>}

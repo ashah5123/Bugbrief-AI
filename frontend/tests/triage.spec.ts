@@ -27,6 +27,8 @@ test("triage persists and combined filters find overdue customer reports", async
   await expect(row).toContainText("Overdue");
   await expect(row).toContainText("Customer awaiting reply");
   await page.getByLabel("Filter by project", { exact: true }).selectOption(project.id);
+  await expect(page.getByLabel("Filter by priority", { exact: true })).toBeHidden();
+  await page.locator(".more-filters > summary").click();
   await page.getByLabel("Filter by priority", { exact: true }).selectOption("urgent");
   await page.getByLabel("Filter by customer", { exact: true }).selectOption(`customer:${records[0].customerId}`);
   await page.getByLabel("Filter by attention", { exact: true }).selectOption("overdue");
@@ -35,6 +37,16 @@ test("triage persists and combined filters find overdue customer reports", async
   await page.getByRole("textbox", { name: "Search feedback", exact: true }).fill("  JAMIE  ");
   await expect(page.locator(".feedback-row")).toHaveCount(1);
   await expect(row).toBeVisible();
+  await page.locator(".more-filters > summary").click();
+  await expect(page.locator(".more-filters > summary")).toContainText("5 active");
+  await expect(page.getByLabel("Filter by priority", { exact: true })).toBeHidden();
+  await expect(page.locator(".feedback-row")).toHaveCount(1);
+  await page.getByRole("button", { name: "Remove priority filter", exact: true }).click();
+  await expect(page.locator(".more-filters > summary")).toContainText("4 active");
+  await expect(page.locator(".feedback-row")).toHaveCount(1);
+  await page.locator(".recent-section").screenshot({ path: `../test-results/${info.project.name}-compact-inbox.png` });
+  await page.locator(".more-filters > summary").click();
+  await expect(page.getByLabel("Filter by priority", { exact: true })).toHaveValue("all");
   await page.getByRole("textbox", { name: "Search feedback", exact: true }).fill("Riley");
   await expect(page.locator(".feedback-row")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "No matches just yet." })).toBeVisible();

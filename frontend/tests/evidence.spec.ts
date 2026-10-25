@@ -84,6 +84,7 @@ test("review, redact, save, preserve on missing key, reload and delete screensho
     page.getByRole("img", { name: "Reviewed screenshot: checkout.png" }),
   ).toBeVisible();
   await page.reload();
+  await page.getByRole("button", { name: "Continue your draft", exact: true }).click();
   await expect(
     page.getByRole("img", { name: "Reviewed screenshot: checkout.png" }),
   ).toBeVisible();

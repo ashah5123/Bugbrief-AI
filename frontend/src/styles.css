@@ -6301,3 +6301,19 @@ code {
   .saved-view-open, .saved-view-save { align-items: stretch; flex-direction: column; }
   .saved-view-open label, .saved-view-save label { flex-basis: auto; }
 }
+
+.resume-company-draft { margin: 12px 0; }
+.more-filters { border-top: 1px solid var(--border); }
+.more-filters > summary, .saved-view-management > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 12px 16px; font-weight: 600; list-style: none; }
+.more-filters > summary::-webkit-details-marker, .saved-view-management > summary::-webkit-details-marker { display: none; }
+.more-filters > summary > svg { margin-left: auto; transition: transform .15s; }
+.more-filters[open] > summary > svg { transform: rotate(180deg); }
+.more-filters .filter-tabs { padding: 0 16px; flex-wrap: wrap; }
+.applied-filters { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.applied-filter { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #d9e2cf; background: #f1f5eb; color: var(--green); border-radius: 20px; padding: 6px 10px; text-align: left; overflow-wrap: anywhere; max-width: 100%; }
+.applied-filter svg { flex-shrink: 0; }
+.saved-view-management { margin-top: 8px; border-top: 1px solid var(--border); }
+.saved-view-management > summary { padding: 12px 0; }
+.saved-view-management > summary::before { content: "+"; font-size: 16px; }
+.saved-view-management[open] > summary::before { content: "−"; }
+.saved-view-open { margin-bottom: 0; }

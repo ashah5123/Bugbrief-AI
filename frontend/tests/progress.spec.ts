@@ -134,6 +134,7 @@ test("company assigns and progresses a customer issue; customer sees owner, stat
     fullPage: true,
     animations: "disabled",
   });
+  await page.locator(".more-filters > summary").click();
   await page
     .getByLabel("Filter by issue progress", { exact: true })
     .selectOption("resolved");
