@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ImagePlus, X } from "lucide-react";
 import { api, ApiError } from "./types";
 import ScreenshotReview from "./ScreenshotReview";
+import { useUnsavedChanges } from "./unsavedChanges";
 type ReplyImage = {
   id: string; filename: string; caption: string; mime_type: string; size: number; width: number; height: number;
 };
@@ -39,7 +40,10 @@ export default function Conversation({ feedbackId, token, readOnly = false }: { 
   const [sendError, setSendError] = useState("");
   const [images, setImages] = useState<PendingImage[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [pendingReview, setPendingReview] = useState(false);
+  useUnsavedChanges(token ? `customer:${token}` : `report:${feedbackId}`, "reply or private note", !!body.trim() || images.length > 0 || pendingReview, busy);
   const previews = useRef(new Set<string>());
+  const mounted = useRef(true);
   const pending = useRef<{ signature: string; id: string } | null>(null);
   function latest(value: MessagePage) {
     const ids = new Set(messageCache.current.map(message => message.id));
@@ -52,9 +56,13 @@ export default function Conversation({ feedbackId, token, readOnly = false }: { 
     } else messageCache.current = mergeMessages(messageCache.current, value.items);
     setMessages(messageCache.current);
   }
-  useEffect(() => () => {
-    for (const url of previews.current) URL.revokeObjectURL(url);
-    previews.current.clear();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const url of previews.current) URL.revokeObjectURL(url);
+      previews.current.clear();
+    };
   }, []);
   useEffect(() => {
     let active = true;
@@ -156,13 +164,14 @@ export default function Conversation({ feedbackId, token, readOnly = false }: { 
       </div>)}</div>
       {!reviewOpen && images.length < 3 && <button type="button" className="secondary-button" disabled={busy} onClick={() => { setReviewOpen(true); setSendError(""); }}><ImagePlus size={16} />{images.length ? "Add another screenshot" : "Add screenshots to reply"}</button>}
       {reviewOpen && <div className="reply-screenshot-review">
-        <ScreenshotReview mode="reply" busy={busy} onError={setSendError} onSave={async (blob, filename) => {
+        <ScreenshotReview mode="reply" busy={busy} onError={setSendError} onPendingChange={setPendingReview} onSave={async (blob, filename) => {
           const content = await base64(blob);
+          if (!mounted.current) return;
           const preview = URL.createObjectURL(blob); previews.current.add(preview);
           setImages(previous => [...previous, { key: crypto.randomUUID(), filename, caption: "", mime_type: blob.type, content_base64: content, reviewed: true, preview }]);
-          setReviewOpen(false); setSendError("");
+          setReviewOpen(false); setPendingReview(false); setSendError("");
         }} />
-        <button type="button" className="text-button" disabled={busy} onClick={() => { setReviewOpen(false); setSendError(""); }}>Cancel screenshot</button>
+        <button type="button" className="text-button" disabled={busy} onClick={() => { setReviewOpen(false); setPendingReview(false); setSendError(""); }}>Cancel screenshot</button>
         <small>Attach the reviewed screenshot or cancel its preview before sending your reply.</small>
       </div>}
       <small>Up to 3 PNG/JPEG screenshots per reply, 2 MiB each. Add a caption if useful. Unsent images stay in this tab and are lost on reload. Screenshots are not analyzed automatically.</small>

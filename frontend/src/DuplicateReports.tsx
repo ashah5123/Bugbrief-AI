@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError, type Feedback, type IssueEmployee, type IssueWorkflow } from "./types";
 import { WorkflowBadge, workflowLabels } from "./WorkflowPanel";
 import { FixFields, emptyFix, completeFix } from "./FixDetails";
+import { useUnsavedChanges } from "./unsavedChanges";
 
 type Member = { id: string; reference: string; title: string; workflow: IssueWorkflow };
 type Group = { main_feedback_id: string; version: number; work_status: string; assigned_employee_id: string | null; members: Member[] };
@@ -23,6 +24,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
   const [employeeId, setEmployeeId] = useState("");
   const [note, setNote] = useState("");
   const [fix, setFix] = useState(emptyFix);
+  const [savedFix, setSavedFix] = useState(emptyFix);
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -33,6 +35,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
   const pending = useRef<{ signature: string; id: string; payload: Record<string, unknown> } | null>(null);
   const group = data?.group;
   const isMain = group?.main_feedback_id === feedbackId;
+  useUnsavedChanges(`report:${feedbackId}`, "shared update or retest instructions", !!isMain && (!!note.trim() || !!body.trim() || JSON.stringify(fix) !== JSON.stringify(savedFix) || (ownerEdited.current && employeeId !== (group?.assigned_employee_id || ""))), busy);
   const root = group?.members.find(member => member.id === group.main_feedback_id);
   const openCount = group?.members.filter(member => member.workflow.status !== "resolved").length || 0;
   async function load() {
@@ -139,7 +142,7 @@ export default function DuplicateReports({ feedbackId, employees, onWorkflow }: 
               disabled={busy || !employeeId || !note.trim() || !openCount || (status === 'ready_to_retest' && (!completeFix(fix) || (!['in_progress','ready_to_retest'].includes(group.work_status) && !['in_progress','ready_to_retest'].includes(root?.workflow.status || ''))))}
               onClick={async () => {
                 const value = await sharedAction("/workflow", { version: group.version, report_versions: Object.fromEntries(group.members.map(member => [member.id, member.workflow.version])), status, assigned_employee_id: employeeId, note, ...(status === 'ready_to_retest' ? { fix_details: fix } : {}) });
-                if (value) { ownerEdited.current = false; setNotice(`Updated ${value.updated_count} open reports.${status === 'ready_to_retest' ? ' Customers can now test independently.' : ''}`); setNote(""); }
+                if (value) { ownerEdited.current = false; if (status === 'ready_to_retest') setSavedFix(fix); setNotice(`Updated ${value.updated_count} open reports.${status === 'ready_to_retest' ? ' Customers can now test independently.' : ''}`); setNote(""); }
               }}>{label}</button>)}
           </div>
         </form>

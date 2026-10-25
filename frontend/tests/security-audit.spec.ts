@@ -30,6 +30,7 @@ test("switching employees clears another account's local draft and sign-out remo
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("bugbrief-draft")))
     .toContain("Private unsaved text");
+  page.once("dialog", dialog => dialog.accept());
   await page.reload();
   await page.getByRole("button", { name: "Continue your draft", exact: true }).click();
   await expect(field).toHaveValue(
@@ -63,6 +64,7 @@ test("switching employees clears another account's local draft and sign-out remo
     ).status(),
   ).toBe(404);
   await field.fill("Second employee's own draft.");
+  page.once("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(
     page.getByRole("link", { name: /I’m an existing employee/ }),

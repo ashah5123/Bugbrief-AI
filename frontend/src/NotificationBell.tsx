@@ -1,3 +1,4 @@
+import { confirmUnsaved, allowPageExit } from "./unsavedChanges";
 import { useEffect, useRef, useState } from "react";
 import { Bell, X } from "lucide-react";
 import { api } from "./types";
@@ -136,10 +137,11 @@ export default function NotificationBell({
                 className={`notification-item ${!item.read_at ? "unread" : ""}`}
                 onClick={async (event) => {
                   event.preventDefault();
+                  if (!confirmUnsaved()) return;
                   setBusy(true);
                   try {
                     await api(endpoint + `/${item.id}/read`, "POST");
-                    location.assign(item.url);
+                    allowPageExit(() => location.assign(item.url));
                   } catch (e) {
                     setError((e as Error).message);
                     setBusy(false);

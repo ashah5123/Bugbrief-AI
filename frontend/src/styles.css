@@ -6317,3 +6317,17 @@ code {
 .saved-view-management > summary::before { content: "+"; font-size: 16px; }
 .saved-view-management[open] > summary::before { content: "−"; }
 .saved-view-open { margin-bottom: 0; }
+
+.report-action-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; text-align: left; border: 1px solid #c6d7b8; background: #f0f5e9; padding: 16px; margin: 16px 0; }
+.report-action-bar > div { min-width: 0; }
+.report-action-bar strong { display: block; font-size: 16px; }
+.report-action-bar p { margin: 6px 0 0; font-size: 12px; }
+.report-action-bar button { flex-shrink: 0; white-space: nowrap; }
+.report-drawer > .report-action-bar { flex-shrink: 0; margin: 0 20px 12px; }
+.drawer-body { min-height: 0; }
+[data-report-panel] .conversation-card, [data-report-panel] .workflow-panel { scroll-margin-top: 20px; }
+@media (max-width: 600px) {
+  .report-action-bar { align-items: stretch; flex-direction: column; gap: 10px; }
+  .report-drawer > .report-action-bar { margin: 0 12px 10px; padding: 12px; }
+  .report-drawer .drawer-title { padding-top: 12px; padding-bottom: 12px; }
+}

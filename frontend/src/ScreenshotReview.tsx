@@ -16,11 +16,13 @@ export default function ScreenshotReview({
   mode = "evidence",
   onSave,
   onError,
+  onPendingChange,
 }: {
   busy: boolean;
   mode?: "evidence" | "reply";
   onSave: (blob: Blob, name: string) => Promise<void>;
   onError: (message: string) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -39,6 +41,8 @@ export default function ScreenshotReview({
     height: 40,
   });
   const [saving, setSaving] = useState(false);
+  useEffect(() => { onPendingChange?.(!!file); }, [file, onPendingChange]);
+  useEffect(() => () => { onPendingChange?.(false); }, [onPendingChange]);
   useEffect(
     () => () => {
       URL.revokeObjectURL(imageUrl.current);

@@ -16,6 +16,7 @@ export function nextStep(workflow: IssueWorkflow | null | undefined, audience: A
     }
   }
   if (workflow.waiting_since) return { title: "Reply to the customer", detail: "Their latest report or message still needs a public response. Private notes won’t reach them." };
+  if (workflow.status !== "resolved" && !workflow.assigned_to) return { title: "Assign an employee", detail: "Choose someone from this project to own the next update before progressing the issue." };
   switch (workflow.status) {
     case "resolved": return { title: "Resolved", detail: "No action needed. Reopen the issue if further work is required." };
     case "ready_to_retest": return { title: hasCustomer ? "Waiting for customer retest" : "Verify the fix", detail: hasCustomer ? "The customer can confirm the fix or tell you what is still happening." : "Repeat the reported steps and resolve the issue when the fix is confirmed." };

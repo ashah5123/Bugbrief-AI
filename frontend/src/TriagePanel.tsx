@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type IssuePriority, type IssueWorkflow } from "./types";
 import { priorityLabels, TriageBadges, todayLocal } from "./triage";
+import { useUnsavedChanges } from "./unsavedChanges";
 
 export default function TriagePanel({ feedbackId, workflow, onChange }: {
   feedbackId: string; workflow: IssueWorkflow; onChange: (value: IssueWorkflow) => void;
@@ -25,6 +26,7 @@ export default function TriagePanel({ feedbackId, workflow, onChange }: {
     adopt(workflow);
   }, [feedbackId, workflow.version]);
   const changed = priority !== (workflow.priority || "normal") || due !== (workflow.due_date || "");
+  useUnsavedChanges(`report:${feedbackId}`, "priority or deadline changes", changed, busy);
   return <section className="workflow-panel triage-panel" aria-label="Report priority and deadline">
     <span className="eyebrow">PLAN THE WORK</span>
     <h3>Priority & deadline</h3>

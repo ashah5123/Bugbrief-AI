@@ -1,3 +1,4 @@
+import { allowPageExit } from "./unsavedChanges";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -141,7 +142,7 @@ export default function CustomerIntake({
           if (identity !== accountIdentity.current) {
             initialized.current = false;
             activateCustomer(identity);
-            location.reload();
+            allowPageExit(() => location.reload());
           }
         })
         .catch(() => {});

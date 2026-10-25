@@ -1,3 +1,5 @@
+import ReportAction from "./ReportAction";
+import { useUnsavedChanges, confirmUnsaved, allowPageExit } from "./unsavedChanges";
 import ProjectHealth, { ProjectHealthCounts } from "./ProjectHealth";
 import SavedViews from "./SavedViews";
 import { defaultFilters, matchesQueue, type QueueFilters } from "./queueFilters";
@@ -269,7 +271,7 @@ export default function App() {
       (identity.employee?.id || "owner") !== (employee?.id || "owner")
     ) {
       clearCompanyDrafts();
-      location.assign("/workspace");
+      allowPageExit(() => location.assign("/workspace"));
       return;
     }
     const [p, f, h, e] = await Promise.all([
@@ -342,6 +344,13 @@ export default function App() {
       );
   }, [editReport, selected]);
   const activeFeedback = allItems.find((item) => item.id === activeId) || null;
+  const draftBase = activeFeedback ? { project_id: activeFeedback.project_id, text: activeFeedback.text, page_url: activeFeedback.page_url, device: activeFeedback.device, browser: activeFeedback.browser } : null;
+  const draftChanged = !activeFeedback?.customer && (draftBase ? JSON.stringify(draft) !== JSON.stringify(draftBase) : [draft.text, draft.page_url, draft.device, draft.browser].some(value => !!value.trim()));
+  useUnsavedChanges("company-draft", "feedback edits", !!draftChanged, busy && !selected);
+  useUnsavedChanges(selected ? `report:${selected.id}` : "closed-report", "report edits", !!(selected && editReport && JSON.stringify(editReport) !== JSON.stringify(selected.report)), busy && !!selected);
+  function closeReport() {
+    if (selected && confirmUnsaved([`report:${selected.id}`])) setSelected(null);
+  }
   const hasSavedEvidence = !!(
     activeFeedback?.attachments.length || activeFeedback?.clarifications.length
   );
@@ -437,15 +446,17 @@ export default function App() {
   const filtered = allItems.filter(item => matchesQueue(item, queueFilters, today, projects, employee?.id))
     .sort((a, b) => compareTriage(a, b, sort, today));
   function applyQueue(value: QueueFilters) {
-    navigate(value.view);
+    if (!navigate(value.view)) return false;
     setArchiveView(value.archive); setSearch(value.search); setProjectFilter(value.project_id);
     setStatusFilter(value.status); setProgressFilter(value.progress); setPriorityFilter(value.priority);
     setAttentionFilter(value.attention); setAssigneeFilter(value.assignee); setCustomerFilter(value.customer); setSort(value.sort);
+    return true;
   }
   function openProjectHealth(projectId: string, attention: string) {
     applyQueue({ ...defaultFilters, project_id: projectId, attention });
   }
-  function navigate(next: View) {
+  function navigate(next: View, checked = false) {
+    if (!checked && !["overview", "feedback"].includes(next) && !confirmUnsaved(undefined, ["company-draft"])) return false;
     setManualOpen(false);
     setMoreFiltersOpen(false);
     setView(next);
@@ -458,6 +469,7 @@ export default function App() {
     setPriorityFilter("all");
     setCustomerFilter("all");
     setAttentionFilter("all");
+    return true;
   }
   function updateWorkflow(feedbackId: string, value: IssueWorkflow) {
     setItems((existing) =>
@@ -470,7 +482,7 @@ export default function App() {
     );
   }
   function newFeedback() {
-    navigate("feedback");
+    navigate("feedback", true);
     setManualOpen(true);
     composer.current?.focus();
     setTimeout(() => composer.current?.focus(), 30);
@@ -573,6 +585,7 @@ export default function App() {
     }
   }
   function openItem(item: Feedback) {
+    if (!confirmUnsaved()) return;
     if (item.report) {
       setSelected(item);
       setEditorTab("report");
@@ -613,6 +626,7 @@ export default function App() {
     setSharing(id || allowed[0].id);
   }
   function startFresh() {
+    if (!confirmUnsaved()) return;
     setActiveId(null);
     setDraft({ ...emptyDraft, project_id: projects[0]?.id || "" });
     setConsent(false);
@@ -695,8 +709,7 @@ export default function App() {
                 className={`project-nav ${projectFilter === p.id ? "chosen" : ""}`}
                 key={p.id}
                 onClick={() => {
-                  setProjectFilter(p.id);
-                  navigate("feedback");
+                  if (navigate("feedback")) setProjectFilter(p.id);
                 }}
               >
                 <span className={`project-dot dot-${i % 3}`} />
@@ -794,9 +807,10 @@ export default function App() {
               className="text-button agency-signout"
               onClick={async () => {
                 try {
+                  if (!confirmUnsaved()) return;
                   await api("/auth/logout", "POST", {});
                   clearCompanyDrafts();
-                  location.assign("/workspace");
+                  allowPageExit(() => location.assign("/workspace"));
                 } catch (e) {
                   setError((e as Error).message);
                 }
@@ -881,7 +895,7 @@ export default function App() {
               workspace…
             </div>
           )}
-          {view === "mywork" && employee && <MyWork employeeId={employee.id} items={items} projects={projects} today={today} open={openItem} resumeDraft={draft.text.trim() || activeId ? newFeedback : undefined} inbox={() => { resetFilters(); navigate("feedback"); }} />}
+          {view === "mywork" && employee && <MyWork employeeId={employee.id} items={items} projects={projects} today={today} open={openItem} resumeDraft={draft.text.trim() || activeId ? newFeedback : undefined} inbox={() => { if (navigate("feedback")) resetFilters(); }} />}
           {(view === "overview" || view === "projects") && (
             <section className="customer-collection-banner">
               <div>
@@ -962,7 +976,7 @@ export default function App() {
             ] as const).map(([value, label, count]) => <button key={value}
               className={attentionFilter === value ? "selected" : ""}
               aria-pressed={attentionFilter === value}
-              onClick={() => { navigate("feedback"); resetFilters(); setAttentionFilter(value); }}>
+              onClick={() => { if (navigate("feedback")) { resetFilters(); setAttentionFilter(value); } }}>
               <strong>{count}</strong><span>{label}</span><ArrowRight size={16} />
             </button>)}
           </section>}
@@ -980,7 +994,7 @@ export default function App() {
                 <ChevronDown size={15} />
               </summary>
               <div className="work-grid">
-                <section className="capture-card">
+                <section className="capture-card" data-report-panel>
                   <div className="card-title">
                     <span className="icon-tile coral">
                       <SquarePen size={20} />
@@ -997,6 +1011,7 @@ export default function App() {
                         : "NEW FEEDBACK"}
                     </span>
                   </div>
+                  {activeFeedback && <ReportAction workflow={activeFeedback.workflow} hasCustomer={!!activeFeedback.customer} readOnly={!canWork(activeFeedback.project_id)} />}
                   <div className="capture-body">
                     <div className="project-label-row">
                       <label htmlFor="project">
@@ -1272,8 +1287,7 @@ export default function App() {
                   <button
                     className="project-open"
                     onClick={() => {
-                      setProjectFilter(p.id);
-                      navigate("feedback");
+                      if (navigate("feedback")) setProjectFilter(p.id);
                     }}
                   >
                     <span className={`project-initial initial-${i % 3}`}>
@@ -1783,17 +1797,18 @@ export default function App() {
         <div
           className="drawer-backdrop"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !busy) setSelected(null);
+            if (e.target === e.currentTarget && !busy) closeReport();
           }}
         >
           <section
             ref={drawerRef}
             className="report-drawer"
+            data-report-panel
             role="dialog"
             aria-modal="true"
             aria-label="Review bug report"
             onKeyDown={(e) => {
-              if (e.key === "Escape" && !busy) setSelected(null);
+              if (e.key === "Escape" && !busy) { e.stopPropagation(); closeReport(); }
             }}
           >
             <div className="drawer-header">
@@ -1804,7 +1819,7 @@ export default function App() {
                 className="icon-button"
                 aria-label="Close report"
                 disabled={busy}
-                onClick={() => setSelected(null)}
+                onClick={closeReport}
               >
                 <X size={21} />
               </button>
@@ -1817,6 +1832,7 @@ export default function App() {
               <h2>Ready for a human touch.</h2>
               <p>Check the evidence, refine the details, make it yours.</p>
             </div>
+            <ReportAction workflow={selected.workflow} hasCustomer={!!selected.customer} readOnly={!canWork(selected.project_id)} />
             <div className="drawer-tabs">
               <button
                 className={editorTab === "report" ? "active" : ""}

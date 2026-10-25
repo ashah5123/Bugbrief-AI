@@ -3,7 +3,7 @@ import { api } from "./types";
 import type { QueueFilters } from "./queueFilters";
 type SavedView = { id: string; name: string; filters: QueueFilters; version: number; unavailable: boolean };
 
-export default function SavedViews({ filters, apply }: { filters: QueueFilters; apply: (filters: QueueFilters) => void }) {
+export default function SavedViews({ filters, apply }: { filters: QueueFilters; apply: (filters: QueueFilters) => boolean }) {
   const [rows, setRows] = useState<SavedView[]>([]);
   const [selected, setSelected] = useState<SavedView | null>(null);
   const [name, setName] = useState("");
@@ -44,7 +44,7 @@ export default function SavedViews({ filters, apply }: { filters: QueueFilters; 
         const value = await api<SavedView>(`/saved-views/${selected!.id}`);
         select(value); setRows(current => current.map(row => row.id === value.id ? value : row));
         if (value.unavailable) throw new Error("This view uses a project, employee or customer no longer available. Choose accessible filters and update the view.");
-        apply(value.filters); setNotice(`Opened ${value.name}`);
+        if (apply(value.filters)) setNotice(`Opened ${value.name}`);
       })}>Open view</button></div>
       {unavailable && <p className="permission-notice">This view uses a project, employee or customer no longer available. Choose accessible inbox filters and update it, or delete it.</p>}
       <details className="saved-view-management"><summary>Manage saved views</summary>

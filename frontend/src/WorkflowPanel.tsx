@@ -2,6 +2,7 @@ import ActivityTimeline from "./ActivityTimeline";
 import { FixFields, FixSummary, emptyFix, completeFix } from "./FixDetails";
 import DuplicateReports from "./DuplicateReports";
 import NextStep from "./NextStep";
+import { useUnsavedChanges } from "./unsavedChanges";
 import TriagePanel from "./TriagePanel";
 import Conversation from "./Conversation";
 import { useEffect, useRef, useState } from "react";
@@ -58,6 +59,7 @@ export function CustomerProgress({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useUnsavedChanges(`customer:${token}`, "retest details", !!note.trim(), busy);
   async function confirm(outcome: "works" | "still_happening") {
     setBusy(true);
     setError("");
@@ -181,11 +183,11 @@ export default function WorkflowPanel({
   const changed =
     status !== workflow.status ||
     employeeId !== (workflow.assigned_employee_id || "") ||
-    !!note.trim() || fixEdited;
+    !!note.trim() || JSON.stringify(fix) !== JSON.stringify(workflow.fix_details || emptyFix);
+  useUnsavedChanges(`report:${feedbackId}`, "progress or retest instructions", changed, busy);
   const needsFix = status === "ready_to_retest" && (workflow.status !== status || fixEdited || !!note.trim());
   return (
     <>
-      <NextStep workflow={workflow} audience="company" hasCustomer={hasCustomer} />
       <fieldset className="permission-controls" disabled={readOnly}>
       <TriagePanel key={feedbackId} feedbackId={feedbackId} workflow={workflow} onChange={onChange} />
       <section className="workflow-panel" aria-label="Assignment and progress">
